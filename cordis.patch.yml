@@ -1,0 +1,8 @@
+# Bundle layer applied when a profile lists this package.
+# The row references the package by name so Node resolution finds the
+# installed code; its browser half (exports["./client"] + dsh.client manifest)
+# is discovered by dsh web's client-modules service.
+- insert:
+    - id: dsh-task-board
+      name: dsh-task-board
+      config: {}
