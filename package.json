@@ -1,6 +1,6 @@
 {
   "name": "dsh-task-board",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "AI-ready task board for DeepSeek Harness: per-workspace kanban with drag & drop, task specs, review lanes and sign-off.",
   "type": "module",
   "main": "index.js",
