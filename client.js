@@ -545,6 +545,13 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
           return "「" + (title.length > 18 ? title.slice(0, 18) + "…" : title) + "」" + st.label;
         }
       }
+      for (let i = 0; i < next.cards.length; i++) {
+        const c = next.cards[i];
+        if (map[c.id] === undefined) {
+          const title = String(c.title || "").trim() || "任务";
+          return "新增任务“" + (title.length > 18 ? title.slice(0, 18) + "…" : title) + "”";
+        }
+      }
       return "";
     }
 
@@ -582,9 +589,6 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
       const savingRef = useRef(false);
       const saveQueuedRef = useRef(false);
       const pollBusyRef = useRef(false);
-      const liveRef = useRef(false);
-      liveRef.current = !!(board && board.cards && board.cards.some((c) => LIVE_STATUS.indexOf(c.status) >= 0));
-      const openIdRef = useRef(null); openIdRef.current = openId;
       const initGitBusyRef = useRef(false);
 
       const cards = (board && board.cards) || [];
@@ -726,7 +730,6 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
         const tick = async () => {
           if (typeof document !== "undefined" && document.visibilityState && document.visibilityState !== "visible") return;
           if (!wsIdRef.current) return;
-          if (!liveRef.current && !openIdRef.current) return;
           if (savingRef.current || pollBusyRef.current) return;
           const forWs = wsIdRef.current;
           pollBusyRef.current = true;

@@ -700,6 +700,7 @@ export function apply(ctx) {
         id: String(item.id !== undefined && item.id !== null ? item.id : (item.workspaceId || '')),
         title: item.title || (item.path ? path.basename(item.path) : ''),
         path: item.path || '',
+        sessionIds: Array.isArray(item.sessionIds) ? item.sessionIds.map((sessionId) => String(sessionId)) : [],
       }));
     } catch (e) {
       return [];
@@ -721,6 +722,156 @@ export function apply(ctx) {
     } catch (e) {
       return false;
     }
+  }
+
+  function workspaceLabels(list) {
+    const labels = list.map((workspace) => workspace.title || workspace.id).filter(Boolean);
+    return labels.slice(0, 10).join('、') || '（宿主未登记任何工作区）';
+  }
+
+  function withinPath(root, target) {
+    try {
+      const base = path.resolve(String(root || ''));
+      const value = path.resolve(String(target || ''));
+      if (!base || !value) return false;
+      const sameCase = (text) => (process.platform === 'win32' ? text.toLowerCase() : text);
+      const left = sameCase(base);
+      const right = sameCase(value);
+      return right === left || right.startsWith(left + path.sep);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function resolveCardWorkspace(wanted, cwd, sessionId) {
+    const list = workspaceList();
+    const key = asText(wanted, 300).trim();
+    if (key) {
+      let hit = list.find((workspace) => workspace.id === key);
+      if (!hit) hit = list.find((workspace) => String(workspace.title || '').toLowerCase() === key.toLowerCase());
+      if (!hit) hit = list.find((workspace) => workspace.path && withinPath(workspace.path, key));
+      if (!hit) throw new Error('找不到工作区「' + key + '」。可用工作区：' + workspaceLabels(list));
+      return hit;
+    }
+    if (cwd) {
+      const matched = list
+        .filter((workspace) => workspace.path && withinPath(workspace.path, cwd))
+        .sort((a, b) => String(b.path).length - String(a.path).length);
+      if (matched.length) return matched[0];
+    }
+    if (sessionId) {
+      const bySession = list.find((workspace) => workspace.sessionIds.indexOf(String(sessionId)) >= 0);
+      if (bySession) return bySession;
+    }
+    if (!list.length) throw new Error('宿主还没有登记任何工作区，无法创建任务卡片。');
+    throw new Error('当前会话所在目录不属于任何已注册工作区，无法创建任务卡片。可用工作区：' + workspaceLabels(list));
+  }
+
+  async function createCardFromSession(args, exec) {
+    const session = exec && exec.agent && exec.agent.session;
+    if (!session) throw new Error('create_task_card 只能由会话中的 AI 调用');
+    const sessionId = String(session.id || (session.header && session.header.id) || '');
+    const cwd = session.header && session.header.cwd ? String(session.header.cwd) : '';
+    const title = asText(args && args.title, 400).trim();
+    if (!title) throw new Error('任务标题不能为空，请提供 title。');
+    const workspace = resolveCardWorkspace(args && args.workspace, cwd, sessionId);
+    if (!findWorkspace(workspace.id)) throw new Error('工作区「' + (workspace.title || workspace.id) + '」已不可用，请刷新后重试。');
+    const priority = ['none', 'low', 'medium', 'high', 'urgent'].indexOf(args && args.priority) >= 0 ? args.priority : 'none';
+    const card = normalizeTask({
+      id: newId(),
+      title,
+      description: asText(args && args.description, 20000),
+      acceptance: asText(args && args.acceptance, 20000),
+      labels: asTextList(args && args.labels, 30, 60),
+      priority,
+      status: 'todo',
+      updatedAt: isoNow(),
+    });
+    await lockedBoard(workspace.id, async (board) => {
+      board.cards.unshift(card);
+      await saveBoard(workspace.id, board, auditEntry('agent:' + sessionId, 'create_card', card, null, 'todo', {}));
+    });
+    const workspaceTitle = workspace.title || workspace.id;
+    return {
+      ok: true,
+      cardId: card.id,
+      title: card.title,
+      workspaceId: workspace.id,
+      workspaceTitle,
+      status: 'todo',
+      message: '已在「' + workspaceTitle + '」看板创建任务卡片「' + card.title + '」（状态：待办）。',
+    };
+  }
+
+  function installCreateCardTool(tools) {
+    if (!tools || typeof tools.register !== 'function') return false;
+    tools.register({
+      name: 'create_task_card',
+      description: '把一条讨论结论或待办记录成当前工作区看板的「待办」任务卡片。当用户要求“创建任务卡片 / 记成看板任务 / 加到待办”时调用；新卡片固定进入「待办」列，不会自动开始执行。标题写清要做什么；讨论中若已形成验收标准，一并填入 acceptance，方便之后直接启动 AI 执行。',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: '任务标题（必填，一句话说明要做什么）' },
+          description: { type: 'string', description: '背景、约束与上下文（可选）' },
+          acceptance: { type: 'string', description: '验收标准（可选，建议从讨论中提取）' },
+          priority: { type: 'string', enum: ['none', 'low', 'medium', 'high', 'urgent'], description: '优先级，默认 none' },
+          labels: { type: 'array', items: { type: 'string' }, description: '标签（可选）' },
+          workspace: { type: 'string', description: '目标看板：工作区 id 或标题；省略时使用当前会话所在工作区' },
+        },
+        required: ['title'],
+        additionalProperties: false,
+      },
+      output: {
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            ok: { type: 'boolean' },
+            cardId: { type: 'string' },
+            title: { type: 'string' },
+            workspaceId: { type: 'string' },
+            workspaceTitle: { type: 'string' },
+            status: { type: 'string' },
+            message: { type: 'string' },
+          },
+          required: ['ok', 'cardId', 'title', 'workspaceId', 'workspaceTitle', 'status', 'message'],
+        },
+        render: (args, value) => [{ type: 'text', text: value && value.message ? value.message : '已创建任务卡片' }],
+      },
+      presentCall: (args) => {
+        const raw = { title: args && args.title };
+        if (args && args.workspace) raw.workspace = args.workspace;
+        return { card: 'generic', title: '创建任务卡片', kind: 'other', rawInput: raw };
+      },
+      async execute(args, exec) {
+        return await createCardFromSession(args, exec);
+      },
+    }, {
+      when: (context) => {
+        try {
+          const id = context && context.agent && context.agent.session && context.agent.session.id;
+          return !(id && sessionIndex.has(String(id)));
+        } catch (e) {
+          return true;
+        }
+      },
+    });
+    return true;
+  }
+
+  function registerCreateCardTool() {
+    if (installCreateCardTool(getService('tools'))) return;
+    if (ctx && typeof ctx.inject === 'function') {
+      try {
+        ctx.inject(['tools'], (toolCtx) => {
+          if (!installCreateCardTool(toolCtx && toolCtx.tools)) logWarn('tools 服务不可用，create_task_card 工具未注册');
+        });
+      } catch (error) {
+        logWarn('create_task_card 延迟注册失败', String((error && error.message) || error));
+      }
+      return;
+    }
+    logWarn('tools 服务不可用，create_task_card 工具未注册');
   }
 
   function lockedBoard(workspaceId, mutate) {
@@ -2407,4 +2558,6 @@ export function apply(ctx) {
     if (timer && typeof timer.unref === 'function') timer.unref();
     return () => clearTimeout(timer);
   }, 'dsh-task-board: reconcile');
+
+  registerCreateCardTool();
 }
