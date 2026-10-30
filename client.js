@@ -157,6 +157,9 @@ body[data-ds-dark-theme] .kb{
 .kb-duetag[data-state="overdue"]{color:var(--hi);font-weight:600}
 .kb-duetag[data-state="today"]{color:var(--accent);font-weight:600}
 .kb-spacer{flex:1}
+.kb-wtbadge{display:inline-flex;align-items:center;gap:4px;min-width:0;max-width:190px;padding:1px 7px 1px 6px;border-radius:999px;background:color-mix(in srgb,var(--ink) 4.5%,transparent);color:var(--ink2);font-family:ui-monospace,SFMono-Regular,Consolas,'Liberation Mono',monospace;font-size:10.5px;font-weight:600;line-height:1.65;font-variant-numeric:tabular-nums}
+.kb-wtbadge .kb-ico{width:11px;height:11px;color:var(--ink3)}
+.kb-wtbadge>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 .kb-ph{height:70px;border-radius:12px;border:1.5px dashed color-mix(in srgb,var(--accent) 55%,transparent);background:color-mix(in srgb,var(--accent) 7%,transparent)}
 .kb-ghost{position:fixed;top:0;left:0;z-index:80;pointer-events:none;will-change:transform}
@@ -410,6 +413,7 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
       blocked: "任务受阻",
       start: "开始执行",
       start_failed: "启动失败",
+      execute_failed: "执行会话失败",
       running: "进入执行",
       queue: "排队等待",
       request_input: "请求输入",
@@ -461,6 +465,41 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
       });
     }
     function isDemo() { try { return /(?:^|[?&])demo=1(?:&|$)/.test(String(window.location.search || "")); } catch (e) { return false; } }
+
+    function shortBranch(branch) {
+      const text = String(branch || "");
+      if (text.length <= 18) return text;
+      if (text.indexOf("task-") === 0) return "task-…" + text.slice(-6);
+      return text.slice(0, 15) + "…";
+    }
+    function cardWorktree(card) {
+      if (!card) return null;
+      const runs = Array.isArray(card.runs) ? card.runs : [];
+      let worktree = null;
+      let startedAt = "";
+      for (let i = runs.length - 1; i >= 0; i -= 1) {
+        const run = runs[i];
+        if (run && run.worktree && run.worktree.branch) {
+          worktree = run.worktree;
+          startedAt = run.startedAt || "";
+          break;
+        }
+      }
+      if (!worktree && card.worktree && card.worktree.branch) {
+        worktree = card.worktree;
+      } else if (!worktree && card.delivery && card.delivery.branch) {
+        worktree = { path: "", branch: card.delivery.branch, baseCommit: card.delivery.baseCommit || "" };
+        startedAt = card.delivery.createdAt || "";
+      }
+      if (!worktree) return null;
+      const cleanedAt = card.delivery && card.delivery.cleanedAt;
+      if (cleanedAt) {
+        const cleaned = Date.parse(cleanedAt);
+        const started = Date.parse(startedAt || "");
+        if (!Number.isFinite(cleaned) || !Number.isFinite(started) || started <= cleaned) return null;
+      }
+      return worktree;
+    }
 
     function seedBoard() {
       const cards = [
@@ -584,6 +623,13 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
       alert: [["M8 2.6 14 12.8H2z"], ["M8 6.4v2.8"], ["M8 11.1v.1"]],
       play: [["M4.5 2.8 12.5 8l-8 5.2z"]],
       flag: [["M4 2.4v11.2"], ["M4 3.2h7.2l-1.5 2.6 1.5 2.6H4"]],
+      branch: [
+        ["M4 3.2v9.6"],
+        ["M4 3.2a1.4 1.4 0 1 1 0 2.8a1.4 1.4 0 1 1 0-2.8"],
+        ["M4 10.4a1.4 1.4 0 1 1 0 2.8a1.4 1.4 0 1 1 0-2.8"],
+        ["M5.4 4.6h3.2a1.4 1.4 0 0 1 1.4 1.4v3"],
+        ["M10 9a1.4 1.4 0 1 1 0 2.8a1.4 1.4 0 1 1 0-2.8"],
+      ],
     };
     function Icon(props) {
       const p = PATHS[props.name] || [];
@@ -698,6 +744,7 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
       const [settingsDraft, setSettingsDraft] = useState(null);
       const [settingsBusy, setSettingsBusy] = useState(false);
       const [settingsErr, setSettingsErr] = useState(null);
+      const [models, setModels] = useState({ status: "loading", groups: [], failures: [], default: null, error: "" });
 
       const boardRef = useRef(null);
       const dragRef = useRef(null);
@@ -754,6 +801,42 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
           });
         return () => { cancelled = true; };
       }, [wsId, board ? board.revision : null]);
+
+      function loadModels() {
+        setModels(function (prev) { return Object.assign({}, prev, { status: "loading", error: "" }); });
+        api("/models").then(function (d) {
+          if (!d || d.ok === false) throw new Error((d && d.error) || "Host 没有返回模型目录");
+          setModels({
+            status: "ready",
+            groups: Array.isArray(d.groups) ? d.groups : [],
+            failures: Array.isArray(d.failures) ? d.failures : [],
+            default: d.default && d.default.provider && d.default.model ? d.default : null,
+            error: "",
+          });
+        }).catch(function (e) {
+          const text = e && e.status === 404
+            ? "Host 版本还不支持模型目录"
+            : e && e.offline ? "Host 不可用，读不到模型目录" : "模型目录加载失败";
+          setModels({ status: "error", groups: [], failures: [], default: null, error: text });
+        });
+      }
+
+      useEffect(function () { loadModels(); }, []);
+
+      function modelLabel(value) {
+        const text = String(value || "");
+        if (!text) return "";
+        const groups = Array.isArray(models.groups) ? models.groups : [];
+        for (let i = 0; i < groups.length; i += 1) {
+          const group = groups[i];
+          const list = group && Array.isArray(group.models) ? group.models : [];
+          for (let j = 0; j < list.length; j += 1) {
+            const model = list[j];
+            if (model && String(group.id) + "/" + String(model.id) === text) return model.name || model.id;
+          }
+        }
+        return text;
+      }
 
       async function loadBoard(id) {
         try { const d = await api("/board?workspaceId=" + encodeURIComponent(id)); if (d && d.board) return normalizeBoard(d.board) || emptyBoard(); } catch (e) { }
@@ -1223,6 +1306,7 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
         const st = STATUS[card.status] || STATUS.todo;
         const missingAcceptance = card.status === "todo" && !String(card.acceptance || "").trim();
         const pr = card.pr || null;
+        const worktreeInfo = cardWorktree(card);
         return h("article", {
           key: card.id, className: "kb-card" + (animate && entered ? " kb-anim" : ""), "data-id": card.id, "data-pri": card.priority || "none",
           role: "button", tabIndex: 0, "aria-label": card.title || "未命名任务",
@@ -1239,8 +1323,9 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
             card.round ? h("span", { className: "kb-metaitem" }, "第 " + card.round + " 轮") : null,
             due ? h("span", { className: "kb-duetag", "data-state": due.state }, h(Icon, { name: "calendar", size: 12 }), due.text) : null,
             pr ? h("span", { className: "kb-metaitem" }, "#" + (pr.number || "")) : null,
+            worktreeInfo ? h("span", { className: "kb-wtbadge", title: (worktreeInfo.path ? "工作树 " + worktreeInfo.path + " · " : "") + "分支 " + worktreeInfo.branch }, h(Icon, { name: "branch", size: 11 }), h("span", null, shortBranch(worktreeInfo.branch))) : null,
             h("span", { className: "kb-spacer" }),
-            card.executor ? h("span", { className: "kb-metaitem", title: "执行模型" }, card.executor) : null
+            card.executor ? h("span", { className: "kb-metaitem", title: "执行模型" }, modelLabel(card.executor)) : null
           )
         );
       }
@@ -1381,6 +1466,7 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
           h("div", { key: "scrim", className: "kb-scrim", onClick: dismissDrawer }),
           h(Drawer, {
             key: openCard.id, card: openCard, gitInfo: gitInfo, saveState: saveState, workspaceId: wsId,
+            models: models, modelLabel: modelLabel, onReloadModels: loadModels,
             startError: startError && startError.taskId === openCard.id ? startError.text : null,
             onPatch: (o) => patch(openCard.id, o),
             onStart: () => startTask(openCard),
@@ -1487,6 +1573,8 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
       const run = RUN_LINE[card.status] || RUN_LINE.todo;
       const budget = card.budget || {};
       const base = card.base || {};
+      const catalog = props.models || { status: "loading", groups: [], failures: [], default: null, error: "" };
+      const modelName = typeof props.modelLabel === "function" ? props.modelLabel : function (v) { return String(v || ""); };
       const runs = Array.isArray(card.runs) ? card.runs : [];
       const reviews = Array.isArray(card.reviews) ? card.reviews : [];
       const lastReview = reviews.length ? reviews[reviews.length - 1] : null;
@@ -1521,8 +1609,8 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
         : missingBranch ? "填写基线分支名" : "交给 AI 在独立工作树里执行";
 
       const execSummary = [
-        card.executor || "默认模型",
-        card.reviewer ? "评审 " + card.reviewer : "评审同执行",
+        card.executor ? modelName(card.executor) : "默认模型",
+        card.reviewer ? "评审 " + modelName(card.reviewer) : "评审同执行",
         customBudget
           ? (budget.maxRounds || DEFAULT_BUDGET.maxRounds) + " 轮 / " + formatTokens(budget.maxTokens || DEFAULT_BUDGET.maxTokens) + " token / " + (budget.maxMinutes || DEFAULT_BUDGET.maxMinutes) + " 分钟"
           : "默认预算",
@@ -1566,6 +1654,58 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
       const delName = trimmedTitle ? (trimmedTitle.length > 14 ? trimmedTitle.slice(0, 14) + "…" : trimmedTitle) : "未命名任务";
 
       const priorityOptions = ["high", "medium", "low", "none"].map(function (p) { return h("option", { key: p, value: p }, PRIORITY_NAME[p]); });
+
+      function modelOptions(selected, emptyLabel) {
+        const current = String(selected || "");
+        const options = [h("option", { key: "__empty", value: "" }, emptyLabel)];
+        const known = {};
+        const groups = Array.isArray(catalog.groups) ? catalog.groups : [];
+        groups.forEach(function (group) {
+          if (!group) return;
+          const providerId = String(group.id || "");
+          const list = Array.isArray(group.models) ? group.models : [];
+          if (!providerId || !list.length) return;
+          const entries = list.filter(function (model) { return model && model.id; }).map(function (model) {
+            const value = providerId + "/" + String(model.id);
+            known[value] = true;
+            return h("option", { key: value, value: value }, model.name || String(model.id));
+          });
+          if (!entries.length) return;
+          options.push(h("optgroup", { key: "g:" + providerId, label: group.name || providerId }, entries));
+        });
+        if (current && !known[current]) {
+          options.push(h("option", { key: "__current", value: current }, "当前：" + current + "（不在目录）"));
+        }
+        return options;
+      }
+
+      function modelCatalogHint() {
+        const failures = Array.isArray(catalog.failures) ? catalog.failures : [];
+        const reload = h("button", { type: "button", className: "kb-btn--link", onClick: props.onReloadModels }, "重试");
+        if (catalog.status === "loading") return h("p", { className: "kb-hint" }, "正在加载模型目录…");
+        if (catalog.status === "error") {
+          return h("p", { className: "kb-hint", "data-kind": "warn" },
+            (catalog.error || "模型目录加载失败") + "；留空仍使用宿主默认模型。", reload);
+        }
+        if (failures.length) {
+          return h("p", { className: "kb-hint", "data-kind": "warn" },
+            "部分模型目录不可用：" + failures.map(function (failure) {
+              const label = failure.name || failure.id;
+              const message = String(failure.message || "").slice(0, 120);
+              return label ? label + "：" + message : message;
+            }).join("；") + "。仍可选择其他模型或留空。", reload);
+        }
+        if (!Array.isArray(catalog.groups) || !catalog.groups.length) {
+          return h("p", { className: "kb-hint", "data-kind": "warn" }, "宿主没有提供可用的模型目录；留空仍使用宿主默认模型。");
+        }
+        return null;
+      }
+
+      const defaultRoute = catalog.default && catalog.default.provider && catalog.default.model
+        ? String(catalog.default.provider) + "/" + String(catalog.default.model)
+        : "";
+      const defaultModelName = defaultRoute ? modelName(defaultRoute) : "";
+      const defaultModelHint = defaultModelName && defaultModelName !== defaultRoute ? "（" + defaultModelName + "）" : "";
 
       useEffect(function () {
         const prev = (typeof document !== "undefined" ? document.activeElement : null);
@@ -1867,9 +2007,15 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
             h("button", { type: "button", className: "kb-sechead", "aria-expanded": showExec ? "true" : "false", onClick: () => setShowExec((v) => !v) },
               h("span", { className: "kb-secnum" }, hasRecord ? "03" : "02"), h("span", { className: "kb-sectitle" }, "执行设置"), h("span", { className: "kb-secsum" }, execSummary), h(Icon, { name: "chevron", size: 14 })),
             showExec ? h("div", { className: "kb-secbody" },
-              h("div", { className: "kb-metagrid" },
-                h("div", { className: "kb-field" }, h("label", null, "执行模型"), h("input", { className: "kb-input", value: card.executor || "", placeholder: "留空 = 看板默认", readOnly: locked, onChange: (e) => props.onPatch({ executor: e.target.value }) })),
-                h("div", { className: "kb-field" }, h("label", null, "评审模型"), h("input", { className: "kb-input", value: card.reviewer || "", placeholder: "默认同执行模型", readOnly: locked, onChange: (e) => props.onPatch({ reviewer: e.target.value }) }))),
+              h("div", { className: "kb-fieldgroup" },
+                h("div", { className: "kb-metagrid" },
+                  h("div", { className: "kb-field" },
+                    h("label", { htmlFor: "kb-task-executor" }, "执行模型"),
+                    h("select", { id: "kb-task-executor", className: "kb-select2", value: card.executor || "", title: card.executor ? modelName(card.executor) : "宿主默认模型", disabled: locked, onChange: (e) => props.onPatch({ executor: e.target.value }) }, modelOptions(card.executor, "宿主默认模型"))),
+                  h("div", { className: "kb-field" },
+                    h("label", { htmlFor: "kb-task-reviewer" }, "评审模型"),
+                    h("select", { id: "kb-task-reviewer", className: "kb-select2", value: card.reviewer || "", title: card.reviewer ? modelName(card.reviewer) : "同执行模型", disabled: locked, onChange: (e) => props.onPatch({ reviewer: e.target.value }) }, modelOptions(card.reviewer, "同执行模型")))),
+                modelCatalogHint()),
               h("div", { className: "kb-fieldgroup" },
                 h("label", { className: "kb-switchrow" },
                   h("input", { type: "checkbox", checked: !customBudget, disabled: locked, onChange: (e) => props.onPatch({ budget: e.target.checked ? {} : Object.assign({}, DEFAULT_BUDGET) }) }),
@@ -1893,7 +2039,7 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
                       h("input", { type: "checkbox", checked: !!base.ignoreDirty, disabled: locked, onChange: (e) => props.onPatch({ base: Object.assign({}, base, { ignoreDirty: e.target.checked }) }) }),
                       h("span", null, "以当前 HEAD 为基线，忽略这些未提交改动")))
                   : h("p", { className: "kb-hint" }, gitInfo ? "工作区干净，基线 = 当前 HEAD。" : "未检测到 Git 状态；开始执行时还会再校验一次。")),
-              h("p", { className: "kb-hint" }, "执行模型、评审模型与轮数由 Host 在启动后读取；PR 与推送行为走看板默认设置（v1 没有设置页）。")) : null),
+              h("p", { className: "kb-hint" }, "模型与轮数由 Host 在启动后读取；模型留空时执行使用宿主默认模型" + defaultModelHint + "，评审同执行模型。PR 与推送行为走看板默认设置（v1 没有设置页）。")) : null),
 
           h("section", { className: "kb-sec" },
             h("button", { type: "button", className: "kb-sechead", "aria-expanded": showMeta ? "true" : "false", onClick: () => setShowMeta((v) => !v) },

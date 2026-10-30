@@ -163,7 +163,10 @@ export async function createFakeHost(options = {}) {
     toolCalls,
     logger,
     autoTurnEnd: options.autoTurnEnd !== false,
+    autoReviewTurnEnd: options.autoReviewTurnEnd === true,
     turnEndDelay: options.turnEndDelay || 0,
+    turnErrorFor: null,
+    turnError: '',
     startedAt: Date.now(),
   };
 
@@ -207,6 +210,36 @@ export async function createFakeHost(options = {}) {
   };
   host.projections = projections;
 
+  const llmService = {
+    providers: [
+      { id: 'magpie', name: 'Magpie' },
+      { id: 'deepseek-account', name: 'DeepSeek' },
+    ],
+    catalogs: {
+      magpie: [
+        { provider: 'magpie', id: 'group/deepseek', name: 'deepseek组 · routing group' },
+        { provider: 'magpie', id: 'commandcode-plan/deepseek/deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash · Command Code Plan' },
+      ],
+      'deepseek-account': [
+        { provider: 'deepseek-account', id: 'deepseek-flash', name: 'DeepSeek Flash' },
+      ],
+    },
+    failures: {},
+    listProviders() { return this.providers.map((provider) => ({ ...provider })); },
+    async listModels(provider) {
+      if (this.failures[provider]) throw new Error(this.failures[provider]);
+      return (this.catalogs[provider] || []).map((model) => ({ ...model }));
+    },
+  };
+  host.llm = llmService;
+  host.noLlm = false;
+
+  const agentDefaultModel = {
+    selection: { provider: 'deepseek-account', model: 'deepseek-flash' },
+    currentSelection() { return { ...this.selection }; },
+  };
+  host.agentDefaultModel = agentDefaultModel;
+
   // ---- 主 ctx ----
   const ctx = {
     effect(fn) {
@@ -234,6 +267,8 @@ export async function createFakeHost(options = {}) {
       if (name === 'agents') return agentsService;
       if (name === 'agentLoop') return legacyLoop;
       if (name === 'sessionProjections') return projections;
+      if (name === 'llm') return host.noLlm ? undefined : llmService;
+      if (name === 'agentDefaultModel') return agentDefaultModel;
       if (name === 'forgeSession') return host.forgeSession;
       if (name === 'tools') return rootTools;
       if (name === 'logger') return logger;
@@ -280,15 +315,23 @@ export async function createFakeHost(options = {}) {
     }
     agent.status = 'idle';
     agent.turnSeq = (agent.turnSeq || 0) + 1;
-    const waiters = agent.idleWaiters.splice(0);
-    for (const r of waiters) { try { r(); } catch (e) { /* noop */ } }
-    emitSessionEvent(agent.session, {
-      type: 'turn/end',
-      data: { turn: agent.turnSeq, reason: { kind: 'completed' } },
-    });
+    const kind = agent.tools && agent.tools.has('review_verdict') ? 'review' : 'execute';
+    const failure = host.turnErrorFor === kind ? (host.turnError || '模拟会话错误') : '';
+    const reason = failure
+      ? { kind: 'error', error: { message: failure, code: 'UNKNOWN' } }
+      : { kind: 'completed' };
+    const event = { type: 'turn/end', data: { turn: agent.turnSeq, reason } };
+    agent.session.append('turn/end', event.data);
+    releaseIdleWaiters(agent);
+    emitSessionEvent(agent.session, event);
     if (typeof agent.ctx._onIdle === 'function') {
       try { agent.ctx._onIdle(agent); } catch (e) { errors.push(e); }
     }
+  }
+
+  function releaseIdleWaiters(agent) {
+    const waiters = agent.idleWaiters.splice(0);
+    for (const r of waiters) { try { r(); } catch (e) { /* noop */ } }
   }
 
   function buildAgent({ id, meta, options: agentOptions, source }) {
@@ -326,8 +369,9 @@ export async function createFakeHost(options = {}) {
       agent.followups.push(msg);
       agent.status = 'running';
       const isReview = tools.has('review_verdict');
-      // 评审会话的 turn 由 review_verdict / request_input 收尾；执行会话按 autoTurnEnd 自动收尾。
-      if (!isReview && host.autoTurnEnd) {
+      // 评审会话默认由 review_verdict / request_input 收尾；autoReviewTurnEnd 用于模拟评审会话异常结束。
+      const auto = isReview ? host.autoReviewTurnEnd : host.autoTurnEnd;
+      if (auto) {
         const delay = host.turnEndDelay || 0;
         setTimeout(() => finishTurn(agent), delay);
       }
@@ -335,8 +379,7 @@ export async function createFakeHost(options = {}) {
     agent.cancel = (cause) => {
       agent.cancels.push(cause);
       agent.status = 'idle';
-      const waiters = agent.idleWaiters.splice(0);
-      for (const r of waiters) r();
+      releaseIdleWaiters(agent);
     };
     agent.ctx = {
       tools: {
@@ -390,6 +433,16 @@ export async function createFakeHost(options = {}) {
     return agent;
   }
 
+  // 真实 agent loop 在首轮 preStep 就要求 provider/model，假宿主同样在创建时拒绝，
+  // 否则「模型留空」这类宿主会静默失败的问题在回归里测不出来。
+  function assertAgentRoute(options) {
+    const provider = options && options.provider;
+    const model = options && options.model;
+    if (!provider || !model) {
+      throw new Error('agent has no provider/model: set AgentOptions.provider and AgentOptions.model or record a model selection');
+    }
+  }
+
   async function makeAgentRecord({ source, id, meta, agentOptions, setup, signal }) {
     const agent = buildAgent({ id, meta, options: agentOptions, source });
     const record = {
@@ -421,6 +474,7 @@ export async function createFakeHost(options = {}) {
   // ---- ctx.get('agents')：新路径 ----
   const agentsService = {
     async create({ sessionId, meta, agentOptions, setup, signal } = {}) {
+      assertAgentRoute(agentOptions);
       const id = sessionId || ('agent-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8));
       return makeAgentRecord({ source: 'agents', id, meta, agentOptions, setup, signal });
     },
@@ -435,6 +489,7 @@ export async function createFakeHost(options = {}) {
   const legacyLoop = {
     created: [],
     async create(sessionId, options2 = {}, meta = {}) {
+      assertAgentRoute(options2);
       const id = sessionId || ('loop-' + Date.now().toString(36));
       const agent = buildAgent({ id, meta, options: options2, source: 'loop' });
       const record = {
@@ -774,6 +829,49 @@ async function runTests(host) {
     assert(ws.title, '工作区应有 title');
   });
 
+  // 2b. 模型目录
+  await test('模型目录：/models 分组、默认模型、单 provider 失败隔离与缺失 llm 降级', async () => {
+    const r = await host.call('GET', '/models');
+    assertEqual(r.status, 200, 'GET /models 状态码');
+    assert(r.json && r.json.ok === true, '/models ok:true，实际 ' + shorten(r.text));
+    assertEqual(r.json.groups.length, 2, '应返回 2 个 provider 分组，实际 ' + shorten(r.json.groups));
+    const magpie = r.json.groups.find((group) => group.id === 'magpie');
+    assert(magpie && magpie.name === 'Magpie', 'magpie 分组应带 name，实际 ' + shorten(magpie));
+    assertEqual(magpie.models.length, 2, 'magpie 模型数');
+    assert(magpie.models.some((model) => model.id === 'group/deepseek' && model.name.includes('routing group')),
+      'magpie 应含 group/deepseek，实际 ' + shorten(magpie.models));
+    assert(magpie.models.some((model) => model.id === 'commandcode-plan/deepseek/deepseek-v4.1-flash'),
+      'magpie 应原样返回带斜杠的 model id');
+    assert(r.json.default && r.json.default.provider === 'deepseek-account' && r.json.default.model === 'deepseek-flash',
+      'default 应为宿主默认选择，实际 ' + shorten(r.json.default));
+    assertEqual(r.json.failures.length, 0, '初始不应有 provider 失败');
+
+    host.llm.failures.magpie = '缺少凭据（fixture）';
+    try {
+      const partial = await host.call('GET', '/models');
+      assertEqual(partial.status, 200, '单 provider 失败仍应 200');
+      assert(partial.json && partial.json.ok === true, '单 provider 失败仍应 ok:true，实际 ' + shorten(partial.text));
+      assertEqual(partial.json.groups.length, 1, '可用分组应保留，实际 ' + shorten(partial.json.groups));
+      assertEqual(partial.json.groups[0].id, 'deepseek-account', '保留的分组应为 deepseek-account');
+      assert(partial.json.failures.some((failure) => failure.id === 'magpie' && String(failure.message).includes('缺少凭据')),
+        '失败应隔离到 failures，实际 ' + shorten(partial.json.failures));
+    } finally {
+      delete host.llm.failures.magpie;
+    }
+
+    host.noLlm = true;
+    try {
+      const missing = await host.call('GET', '/models');
+      assertEqual(missing.status, 200, 'llm 缺失仍应 200');
+      assert(missing.json && missing.json.ok === true, 'llm 缺失仍应 ok:true，实际 ' + shorten(missing.text));
+      assertEqual(missing.json.groups.length, 0, 'llm 缺失 groups 应为空');
+      assert(missing.json.failures.length, 'llm 缺失应返回可读 failures，实际 ' + shorten(missing.json.failures));
+      assert(String(missing.json.failures[0].message).includes('llm'), 'llm 缺失原因应点名 llm，实际 ' + shorten(missing.json.failures[0]));
+    } finally {
+      host.noLlm = false;
+    }
+  });
+
   // 3. git
   await test('git 探测：仓库 / 非仓库 / 越权路径', async () => {
     const r = await host.call('GET', '/git?path=' + encodeURIComponent(REPO));
@@ -886,6 +984,9 @@ async function runTests(host) {
     assert(rec, '应通过 agents.create 或 agentLoop.create 建出执行 agent（sessionId=' + run.sessionId + '），实际 created=' +
       shorten(host.created.map((x) => ({ source: x.source, id: x.id }))));
     execAgent = rec.agent;
+    assertEqual(rec.agentOptions.provider, 'deepseek-account', '模型留空时应补宿主默认 provider，实际 ' + shorten(rec.agentOptions));
+    assertEqual(rec.agentOptions.model, 'deepseek-flash', '模型留空时应补宿主默认 model，实际 ' + shorten(rec.agentOptions));
+    assertEqual(run.model, 'deepseek-account/deepseek-flash', 'Run 应记录实际使用的模型，实际 ' + shorten(run.model));
     assertEqual(path.resolve(rec.meta && rec.meta.cwd || ''), path.resolve(worktreePath), 'agent meta.cwd 应为 worktree');
     assert(execAgent.followups.length >= 1, '执行 agent 应收到 followup 任务 prompt');
     assert(JSON.stringify(execAgent.followups[0]).includes('执行任务'), 'followup 应包含任务标题');
@@ -907,6 +1008,96 @@ async function runTests(host) {
     const card = await host.card(execCard.id);
     assertEqual(card.runs.length, 1, '不应重复记账 Run');
     void mineBefore;
+  });
+
+  // 8b. 只写 model：provider 用宿主默认补全
+  await test('模型路由：只写 model 时用宿主默认 provider 补全', async () => {
+    host.autoTurnEnd = false;
+    const card = makeCard('只写模型任务', { executor: 'deepseek-v4-pro' });
+    await addCard(card);
+    const start = await host.start(card.id);
+    assert(start.json && start.json.ok === true, 'start 应成功，实际 ' + shorten(start.text));
+    const running = await host.waitCardStatus(card.id, ['running'], '只写模型任务进入执行');
+    const run = running.runs[running.runs.length - 1];
+    const rec = host.created.find((r) => r.agent && r.agent.id === run.sessionId);
+    assert(rec, '应创建执行 agent');
+    assertEqual(rec.agentOptions.provider, 'deepseek-account', '只写 model 时应补宿主默认 provider，实际 ' + shorten(rec.agentOptions));
+    assertEqual(rec.agentOptions.model, 'deepseek-v4-pro', 'model 应保持卡片值，实际 ' + shorten(rec.agentOptions));
+    assertEqual(run.model, 'deepseek-account/deepseek-v4-pro', 'Run 应记录补全后的路由，实际 ' + shorten(run.model));
+    await host.action(card.id, 'cancel');
+    await sleep(30);
+  });
+
+  // 8c. 执行会话首轮错误：转 blocked 并保留真实原因，不自动转评审
+  await test('执行会话 turn/end 错误：Run 失败 + blocked + 不误转评审', async () => {
+    const beforeReviews = host.reviewAgentRecords().length;
+    host.autoTurnEnd = true;
+    host.turnErrorFor = 'execute';
+    host.turnError = '模拟执行会话错误';
+    try {
+      const card = makeCard('执行会话错误任务');
+      await addCard(card);
+      const start = await host.start(card.id);
+      assert(start.json && start.json.ok === true, 'start 应成功，实际 ' + shorten(start.text));
+      const blocked = await host.waitCardStatus(card.id, ['blocked'], '执行会话错误应转 blocked');
+      assert(String(blocked.error).includes('执行会话失败：模拟执行会话错误'),
+        '卡片 error 应保留真实原因，实际 ' + shorten(blocked.error));
+      const run = [...blocked.runs].reverse().find((item) => item.kind === 'execute');
+      assertEqual(run.status, 'failed', '执行 Run 应 failed');
+      assert(String(run.error).includes('模拟执行会话错误'), 'Run.error 应保留真实原因，实际 ' + shorten(run.error));
+      assertEqual(host.reviewAgentRecords().length, beforeReviews, '执行会话失败不应起评审');
+      const audit = await host.auditLines();
+      assert(audit.some((line) => line && line.taskId === card.id && line.action === 'execute_failed'),
+        '审计应有 execute_failed，实际 ' + shorten(audit.map((line) => line && line.action)));
+    } finally {
+      host.turnErrorFor = null;
+      host.turnError = '';
+    }
+  });
+
+  // 8d. 评审会话首轮错误：blocked 并写「评审会话失败」
+  await test('评审会话 turn/end 错误：Review 失败 + blocked + 真实原因', async () => {
+    host.autoTurnEnd = true;
+    host.autoReviewTurnEnd = true;
+    host.turnErrorFor = 'review';
+    host.turnError = '模拟评审会话错误';
+    try {
+      const card = makeCard('评审会话错误任务');
+      await addCard(card);
+      const start = await host.start(card.id);
+      assert(start.json && start.json.ok === true, 'start 应成功，实际 ' + shorten(start.text));
+      const blocked = await host.waitCardStatus(card.id, ['blocked'], '评审会话错误应转 blocked');
+      assert(String(blocked.error).includes('评审会话失败：模拟评审会话错误'),
+        '卡片 error 应保留真实原因，实际 ' + shorten(blocked.error));
+      const run = [...blocked.runs].reverse().find((item) => item.kind === 'review');
+      assertEqual(run.status, 'failed', '评审 Run 应 failed');
+      assert(String(run.error).includes('模拟评审会话错误'), '评审 Run.error 应保留真实原因');
+      assert(blocked.reviews.length >= 1, '应记录一条无结论评审，实际 ' + shorten(blocked.reviews));
+      const review = blocked.reviews[blocked.reviews.length - 1];
+      assert(String(review.note).includes('模拟评审会话错误'), 'Review.note 应保留真实原因，实际 ' + shorten(review.note));
+    } finally {
+      host.autoReviewTurnEnd = false;
+      host.turnErrorFor = null;
+      host.turnError = '';
+    }
+  });
+
+  // 8e. 宿主没有默认模型且卡未选模型：启动失败并写清原因
+  await test('无默认模型且未选模型：启动失败 agent_unavailable', async () => {
+    const previous = host.agentDefaultModel.selection;
+    host.agentDefaultModel.selection = null;
+    try {
+      const card = makeCard('无默认模型任务');
+      await addCard(card);
+      const start = await host.start(card.id);
+      assert(start.json && start.json.ok === false, '应启动失败，实际 ' + shorten(start.text));
+      assertEqual(start.json.code, 'agent_unavailable', '失败 code');
+      assert(String(start.json.error).includes('未指定模型'), '错误应说明缺少模型，实际 ' + shorten(start.json.error));
+      const failed = await host.card(card.id);
+      assertEqual(failed.status, 'failed', '启动失败后卡片应为 failed');
+    } finally {
+      host.agentDefaultModel.selection = previous;
+    }
   });
 
   // 9. turn/end → awaiting_review → 评审 agent
@@ -962,6 +1153,7 @@ async function runTests(host) {
     assert(card.delivery.diffStat, 'delivery.diffStat 应非空');
     assertEqual(card.delivery.patchAvailable, true, 'delivery.patchAvailable');
     const execRun = card.runs.find((x) => x.kind === 'execute');
+    assertEqual(review.reviewerModel, execRun.model, '评审未指定模型时应跟随执行 Run 的模型');
     assertEqual(execRun.status, 'done', '执行 Run 应 done');
     assert(execRun.endedAt != null, '执行 Run 应有 endedAt');
     assert(execRun.summary, '执行 Run 应记录 summary');

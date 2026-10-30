@@ -687,8 +687,8 @@ function normalizeTask(raw) {
     labels: Array.isArray(source.labels) ? source.labels.slice(0, 30).map((label) => String(label).slice(0, 60)) : [],
     priority: ['none', 'low', 'medium', 'high', 'urgent'].includes(source.priority) ? source.priority : 'none',
     due: source.due === undefined ? null : source.due,
-    executor: asText(source.executor, 120),
-    reviewer: asText(source.reviewer, 120),
+    executor: asText(source.executor, 400),
+    reviewer: asText(source.reviewer, 400),
     budget: normalizeBudget(source.budget),
     base: normalizeBase(source.base),
     verify: normalizeVerify(source.verify),
@@ -1131,6 +1131,56 @@ export function apply(ctx) {
     return labels.slice(0, 10).join('、') || '（宿主未登记任何工作区）';
   }
 
+  function defaultModelSelection() {
+    const service = getService('agentDefaultModel');
+    if (!service || typeof service.currentSelection !== 'function') return null;
+    try {
+      const selection = service.currentSelection();
+      if (!selection || !selection.provider || !selection.model) return null;
+      return { provider: String(selection.provider), model: String(selection.model) };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async function modelCatalog() {
+    const llm = getService('llm');
+    const catalog = { default: defaultModelSelection(), groups: [], failures: [] };
+    if (!llm || typeof llm.listProviders !== 'function' || typeof llm.listModels !== 'function') {
+      catalog.failures.push({ id: '', name: '', message: '宿主未提供模型目录（llm 服务不可用）' });
+      return catalog;
+    }
+    let providers;
+    try {
+      providers = llm.listProviders();
+    } catch (error) {
+      catalog.failures.push({ id: '', name: '', message: String((error && error.message) || error) });
+      return catalog;
+    }
+    const results = await Promise.all((Array.isArray(providers) ? providers : []).map(async (provider) => {
+      const id = asText(provider && provider.id, 120);
+      const name = asText(provider && provider.name, 120) || id;
+      if (!id) return null;
+      try {
+        const models = await llm.listModels(id);
+        const entries = (Array.isArray(models) ? models : []).map((model) => {
+          const modelId = asText(model && model.id, 200);
+          if (!modelId) return null;
+          return { id: modelId, name: asText(model && model.name, 200) || modelId };
+        }).filter(Boolean);
+        return entries.length ? { group: { id, name, models: entries } } : null;
+      } catch (error) {
+        return { failure: { id, name, message: String((error && error.message) || error) } };
+      }
+    }));
+    for (const result of results) {
+      if (!result) continue;
+      if (result.group) catalog.groups.push(result.group);
+      else catalog.failures.push(result.failure);
+    }
+    return catalog;
+  }
+
   function withinPath(root, target) {
     try {
       const base = path.resolve(String(root || ''));
@@ -1492,19 +1542,29 @@ export function apply(ctx) {
     return requestToken(req, url) === need;
   }
 
-  function modelRoute(task, kind) {    const raw = kind === 'review' ? (task.reviewer || task.executor) : task.executor;
+  function modelRoute(task, kind) {
+    const raw = kind === 'review' ? (task.reviewer || task.executor) : task.executor;
     const text = String(raw || '').trim();
-    if (!text) return {};
+    const fallback = defaultModelSelection();
+    if (!text) {
+      if (!fallback) return { error: '未指定模型，且宿主未提供默认模型' };
+      return { provider: fallback.provider, model: fallback.model, label: fallback.provider + '/' + fallback.model };
+    }
     const slash = text.indexOf('/');
-    if (slash > 0) return { provider: text.slice(0, slash), model: text.slice(slash + 1) };
-    return { model: text };
+    if (slash > 0) {
+      const provider = text.slice(0, slash);
+      const model = text.slice(slash + 1);
+      if (!model) return { error: '模型路由格式不正确：' + text };
+      return { provider, model, label: provider + '/' + model };
+    }
+    if (!fallback) return { error: '模型「' + text + '」缺少 provider，且宿主未提供默认模型' };
+    return { provider: fallback.provider, model: text, label: fallback.provider + '/' + text };
   }
 
   async function createSession(task, kind, cwd, setup) {
     const route = modelRoute(task, kind);
-    const agentOptions = {};
-    if (route.provider) agentOptions.provider = route.provider;
-    if (route.model) agentOptions.model = route.model;
+    if (route.error) return { ok: false, error: route.error };
+    const agentOptions = { provider: route.provider, model: route.model };
     if (task.budget && task.budget.maxTokens) agentOptions.maxTokens = task.budget.maxTokens;
     const sessionId = newId();
     const agents = agentsService();
@@ -1516,6 +1576,7 @@ export function apply(ctx) {
           sessionId,
           agent: handle.agent,
           dispose: handle && typeof handle.dispose === 'function' ? handle.dispose : null,
+          model: route.label,
         };
       } catch (error) {
         return { ok: false, error: String((error && error.message) || error) };
@@ -1528,7 +1589,7 @@ export function apply(ctx) {
     try {
       const agent = await loop.create(sessionId, agentOptions, { cwd });
       if (typeof setup === 'function') await setup(agent.ctx, agent);
-      return { ok: true, sessionId, agent, dispose: null };
+      return { ok: true, sessionId, agent, dispose: null, model: route.label };
     } catch (error) {
       return { ok: false, error: String((error && error.message) || error) };
     }
@@ -1919,7 +1980,10 @@ export function apply(ctx) {
     const hostVerifications = await runHostVerifications(task, board.settings, worktree.path);
     const handoff = buildReviewHandoff(task, execRun, hostVerifications);
     const holder = { entry: null, toolsReady: false };
-    const created = await createSession(task, 'review', worktree.path, (agentCtx, reviewAgent) => registerReviewTools(agentCtx, reviewAgent, holder));
+    const reviewTask = !task.reviewer && !task.executor && execRun && execRun.model
+      ? Object.assign({}, task, { executor: execRun.model })
+      : task;
+    const created = await createSession(reviewTask, 'review', worktree.path, (agentCtx, reviewAgent) => registerReviewTools(agentCtx, reviewAgent, holder));
     if (!created.ok) {
       await failReviewStart(workspaceId, taskId, runId, created.error);
       return;
@@ -1928,7 +1992,7 @@ export function apply(ctx) {
       key: keyOf(workspaceId, taskId) + '::review', workspaceId, taskId, kind: 'review', runId,
       sessionId: created.sessionId, agent: created.agent, dispose: created.dispose, phase: 'reviewing',
       timer: null, startedAt: Date.now(), worktree, worktreePath: worktree.path,
-      model: task.reviewer || task.executor || '', settled: false, toolsReady: holder.toolsReady,
+      model: created.model || task.reviewer || task.executor || '', settled: false, toolsReady: holder.toolsReady,
       prCapture: null, limitMinutes: REVIEW_LIMIT_MINUTES,
       verifications: hostVerifications.slice(),
     };
@@ -2218,6 +2282,26 @@ export function apply(ctx) {
       .catch((error) => logError('settle after turn failed', String((error && error.message) || error)));
   }
 
+  function turnFailure(entry) {
+    const session = entry && entry.agent && entry.agent.session;
+    if (!session || typeof session.snapshotEvents !== 'function') return '';
+    let events;
+    try { events = session.snapshotEvents(); } catch (e) { return ''; }
+    for (let i = events.length - 1; i >= 0; i -= 1) {
+      const event = events[i];
+      if (!event || event.type !== 'turn/end') continue;
+      const reason = event.data && event.data.reason;
+      if (!reason || reason.kind !== 'error') return '';
+      const error = reason.error;
+      const message = error && typeof error === 'object'
+        ? asText(error.message || error.code, 2000).trim()
+        : asText(error, 2000).trim();
+      const code = error && typeof error === 'object' ? asText(error.code, 120).trim() : '';
+      return (message || '会话异常结束') + (code && code !== 'UNKNOWN' ? '（' + code + '）' : '');
+    }
+    return '';
+  }
+
   async function settleEntry(entry) {
     if (!entry || entry.settled) return;
     if (!runEntries.has(entry.key)) return;
@@ -2228,6 +2312,8 @@ export function apply(ctx) {
     if (!task) return;
     if (entry.kind === 'execute') {
       if (task.status !== 'running') return;
+      const failure = turnFailure(entry);
+      if (failure) { await failExecute(entry, failure); return; }
       await submitForReview(entry, '执行结束（未显式调用 submit_for_review）', []);
       return;
     }
@@ -2235,10 +2321,36 @@ export function apply(ctx) {
       entry.settled = false;
       return;
     }
+    const failure = turnFailure(entry);
+    if (failure) { await failReview(entry, failure, true); return; }
     await failReview(entry, '评审未给出结论（会话结束），已转人工');
   }
 
-  async function failReview(entry, message) {
+  async function failExecute(entry, message) {
+    const workspaceId = entry.workspaceId;
+    await lockedBoard(workspaceId, async (board) => {
+      const task = findTask(board, entry.taskId);
+      if (!task || task.status !== 'running') return;
+      const run = task.runs.find((item) => item.id === entry.runId);
+      if (run) {
+        run.status = 'failed';
+        run.endedAt = isoNow();
+        run.error = message;
+        run.tokens = readTokens(entry) || run.tokens;
+      }
+      const from = task.status;
+      const to = confirmTransition('block', from) || 'blocked';
+      task.status = to;
+      task.error = '执行会话失败：' + message;
+      task.updatedAt = isoNow();
+      await saveBoard(workspaceId, board, auditEntry('host', 'execute_failed', task, from, to, { runId: entry.runId, reason: message }));
+    });
+    releaseEntry(entry, true);
+    pumpQueue(workspaceId);
+    pumpReviewQueue(workspaceId).catch(() => undefined);
+  }
+
+  async function failReview(entry, message, sessionError) {
     const workspaceId = entry.workspaceId;
     await lockedBoard(workspaceId, async (board) => {
       const task = findTask(board, entry.taskId);
@@ -2266,7 +2378,7 @@ export function apply(ctx) {
       const from = task.status;
       const to = confirmTransition('block', from) || 'blocked';
       task.status = to;
-      task.error = '评审未通过或未给出结论：' + message;
+      task.error = (sessionError ? '评审会话失败：' : '评审未通过或未给出结论：') + message;
       task.updatedAt = isoNow();
       await saveBoard(workspaceId, board, auditEntry('host', 'review_blocked', task, from, to, { runId: entry.runId, reason: message }));
     });
@@ -2475,7 +2587,7 @@ export function apply(ctx) {
       startedAt: Date.now(),
       worktree: { path: prepared.path, branch: prepared.branch, baseCommit: prepared.baseCommit },
       worktreePath: prepared.path,
-      model: startedTask.executor || '',
+      model: created.model || startedTask.executor || '',
       settled: false,
       toolsReady: holder.toolsReady,
       prCapture: null,
@@ -2492,7 +2604,7 @@ export function apply(ctx) {
       const to = from ? confirmTransition('worktree', from) : null;
       if (!task || !run || !to) { aborted = true; return; }
       run.sessionId = created.sessionId;
-      run.model = task.executor || '';
+      run.model = created.model || task.executor || '';
       task.status = to;
       task.error = null;
       task.updatedAt = isoNow();
@@ -3143,6 +3255,9 @@ export function apply(ctx) {
       }
       if (method === 'GET' && sub === '/workspaces') {
         return json(res, 200, { ok: true, workspaces: workspaceList() });
+      }
+      if (method === 'GET' && sub === '/models') {
+        return json(res, 200, Object.assign({ ok: true }, await modelCatalog()));
       }
       if (method === 'GET' && sub === '/git') {
         const target = url.searchParams.get('path');
