@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { exec, execFile } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 export const inject = ['webServer', 'workspaceRegistry'];
 
@@ -16,6 +16,11 @@ const REVIEW_LIMIT_MINUTES = 15;
 const PR_TIMEOUT_MS = 90000;
 const VERIFY_TIMEOUT_MS = 120000;
 const VERIFY_MAX_OUTPUT = 20000;
+const EVIDENCE_MAX = 30;
+const EVIDENCE_TEXT_MAX = 500;
+const VERIFY_RECORD_MAX = 20;
+const AUDIT_DEFAULT_LIMIT = 100;
+const AUDIT_MAX_LIMIT = 500;
 
 const DEFAULT_SETTINGS = {
   concurrency: 2,
@@ -36,6 +41,11 @@ const LIVE_STATUS = new Set([
 const VALID_STATUS = new Set([
   'todo', 'done', 'blocked', 'failed', 'cancelled', 'awaiting_signoff',
   'pr_pending', 'finalize_failed', ...LIVE_STATUS,
+]);
+
+const ATTENTION_STATUS = new Set([
+  'needs_input', 'awaiting_approval', 'awaiting_signoff', 'pr_pending',
+  'finalize_failed', 'blocked', 'failed',
 ]);
 
 const TRANSITIONS = {
@@ -99,7 +109,117 @@ function asTextList(value, maxItems, maxLen) {
   return out;
 }
 
+function hashText(text) {
+  try { return createHash('sha1').update(String(text || '')).digest('hex'); }
+  catch (e) { return ''; }
+}
+
+function normalizeEvidenceItem(item) {
+  if (typeof item === 'string') {
+    const text = asText(item, EVIDENCE_TEXT_MAX).trim();
+    return text ? { type: 'note', text } : null;
+  }
+  if (!item || typeof item !== 'object') return null;
+  const type = item.type === 'verification' ? 'verification' : 'note';
+  if (type === 'verification') {
+    const command = asText(item.command, EVIDENCE_TEXT_MAX).trim();
+    if (!command) return null;
+    const normalized = { type, command, exitCode: asInt(item.exitCode, -1) };
+    if (item.at) normalized.at = asText(item.at, 64);
+    if (item.summary) normalized.summary = asText(item.summary, EVIDENCE_TEXT_MAX).trim();
+    return normalized;
+  }
+  const text = asText(item.text, EVIDENCE_TEXT_MAX).trim();
+  return text ? { type: 'note', text } : null;
+}
+
+function normalizeEvidence(value, maxItems) {
+  if (!Array.isArray(value)) return [];
+  const out = [];
+  for (const item of value.slice(0, maxItems || EVIDENCE_MAX)) {
+    const normalized = normalizeEvidenceItem(item);
+    if (normalized) out.push(normalized);
+  }
+  return out;
+}
+
+function evidenceFromVerifications(verifications) {
+  if (!Array.isArray(verifications)) return [];
+  return verifications.slice(-VERIFY_RECORD_MAX).map((item) => ({
+    type: 'verification',
+    command: asText(item && item.command, EVIDENCE_TEXT_MAX).trim(),
+    exitCode: asInt(item && item.exitCode, -1),
+    at: item && item.at ? String(item.at) : isoNow(),
+    ...(item && item.summary ? { summary: asText(item.summary, EVIDENCE_TEXT_MAX).trim() } : {}),
+  })).filter((item) => item.command);
+}
+
+function normalizeVerifications(value) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(-VERIFY_RECORD_MAX).map((item) => ({
+    command: asText(item && item.command, EVIDENCE_TEXT_MAX).trim(),
+    exitCode: asInt(item && item.exitCode, -1),
+    at: item && item.at ? String(item.at) : null,
+    summary: item && item.summary ? asText(item.summary, EVIDENCE_TEXT_MAX).trim() : '',
+    hash: item && item.hash ? String(item.hash).slice(0, 64) : '',
+  })).filter((item) => item.command);
+}
+
+function mergeEvidence(value, verifications) {
+  const merged = normalizeEvidence(value, EVIDENCE_MAX);
+  for (const item of evidenceFromVerifications(verifications)) {
+    if (merged.length >= EVIDENCE_MAX) break;
+    merged.push(item);
+  }
+  return merged;
+}
+
+function verificationSummary(verifications) {
+  const list = Array.isArray(verifications)
+    ? verifications.filter((item) => item && item.command)
+    : [];
+  return {
+    ran: list.length > 0,
+    passed: list.length > 0 && list.every((item) => asInt(item.exitCode, -1) === 0),
+    commands: list.slice(-10).map((item) => ({
+      command: asText(item.command, EVIDENCE_TEXT_MAX),
+      exitCode: asInt(item.exitCode, -1),
+      at: item.at ? String(item.at) : null,
+    })),
+  };
+}
+
+function normalizeVerification(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  return {
+    ran: source.ran === true,
+    passed: source.passed === true,
+    commands: Array.isArray(source.commands)
+      ? source.commands.slice(0, 10).map((item) => ({
+        command: asText(item && item.command, EVIDENCE_TEXT_MAX),
+        exitCode: asInt(item && item.exitCode, -1),
+        at: item && item.at ? String(item.at) : null,
+      })).filter((item) => item.command)
+      : [],
+  };
+}
+
+function closeOpenMustFix(task, review) {
+  if (!task || !Array.isArray(task.reviews)) return;
+  for (const previous of task.reviews) {
+    if (!previous || !Array.isArray(previous.mustFix)) continue;
+    for (const item of previous.mustFix) {
+      if (item && item.status !== 'closed') {
+        item.status = 'closed';
+        item.closedAt = isoNow();
+        item.closedByReview = review && review.id ? review.id : null;
+      }
+    }
+  }
+}
+
 function asInt(value, fallback) {
+  if (value === null || value === undefined || value === '') return fallback;
   const n = Number(value);
   return Number.isFinite(n) ? Math.trunc(n) : fallback;
 }
@@ -292,6 +412,7 @@ function buildReviewPrompt(task, diff) {
   lines.push('变更内容（超过 40KB 已截断）：');
   lines.push(diff.text || '(无已提交差异)');
   lines.push('请对照验收标准检查改动，实际运行可用的验证命令（npm test / npm run build / npm run lint / git diff 等），逐条确认验收项。');
+  lines.push('给出结论前必须实际运行验证，并在 evidence 中列出证据（命令与结果）；没有任何证据的 pass 会被拒绝。');
   lines.push('最后必须调用 review_verdict 工具给出结论：通过用 pass；不通过用 changes，并在 mustFix 中按 file/line/severity/issue/suggestion 列出必须修复项。不要只回复文字。');
   return lines.join('\n');
 }
@@ -424,7 +545,8 @@ function normalizeRun(raw) {
     startedAt: source.startedAt ? String(source.startedAt) : null,
     endedAt: source.endedAt ? String(source.endedAt) : null,
     summary: source.summary ? String(source.summary) : '',
-    evidence: asTextList(source.evidence, 20, 500),
+    evidence: normalizeEvidence(source.evidence, EVIDENCE_MAX),
+    verifications: normalizeVerifications(source.verifications),
     tokens: Math.max(0, asInt(source.tokens, 0)),
     error: source.error ? String(source.error) : null,
   };
@@ -445,10 +567,14 @@ function normalizeReview(raw) {
         severity: item && item.severity ? String(item.severity) : 'major',
         issue: item && item.issue ? String(item.issue) : '',
         suggestion: item && item.suggestion ? String(item.suggestion) : '',
+        status: item && item.status === 'closed' ? 'closed' : 'open',
+        closedAt: item && item.closedAt ? String(item.closedAt) : null,
+        closedByReview: item && item.closedByReview ? String(item.closedByReview) : null,
       }))
       : [],
     nits: asTextList(source.nits, 30, 500),
-    evidence: asTextList(source.evidence, 30, 500),
+    evidence: normalizeEvidence(source.evidence, EVIDENCE_MAX),
+    verification: normalizeVerification(source.verification),
     startedAt: source.startedAt ? String(source.startedAt) : null,
     endedAt: source.endedAt ? String(source.endedAt) : null,
     note: source.note ? String(source.note) : null,
@@ -488,6 +614,8 @@ function normalizeTask(raw) {
         by: source.signoff.by ? String(source.signoff.by) : 'user',
         at: source.signoff.at ? String(source.signoff.at) : null,
         note: source.signoff.note ? String(source.signoff.note) : '',
+        reviewId: source.signoff.reviewId ? String(source.signoff.reviewId) : null,
+        verification: source.signoff.verification ? normalizeVerification(source.signoff.verification) : null,
       }
       : null,
     updatedAt: source.updatedAt ? String(source.updatedAt) : isoNow(),
@@ -510,12 +638,171 @@ function normalizeBoard(raw) {
 }
 
 async function readBoard(workspaceId) {
-  try {
-    const raw = await fs.readFile(boardFile(workspaceId), 'utf8');
-    return normalizeBoard(JSON.parse(raw));
-  } catch (e) {
+  const file = boardFile(workspaceId);
+  let raw;
+  try { raw = await fs.readFile(file, 'utf8'); }
+  catch (e) { return null; }
+  try { return normalizeBoard(JSON.parse(raw)); }
+  catch (e) {
+    const backup = file + '.corrupt-' + Date.now() + '.bak';
+    try {
+      await fs.copyFile(file, backup);
+      console.warn('[dsh-task-board] 看板 JSON 损坏，已备份到 ' + backup);
+    } catch (copyError) {
+      console.warn('[dsh-task-board] 看板 JSON 损坏且备份失败: ' + String((copyError && copyError.message) || copyError));
+    }
     return null;
   }
+}
+
+async function readAudit(workspaceId, options) {
+  const limit = clampInt(options && options.limit, 1, AUDIT_MAX_LIMIT, AUDIT_DEFAULT_LIMIT);
+  const taskId = options && options.taskId ? String(options.taskId) : null;
+  let raw;
+  try { raw = await fs.readFile(auditFile(workspaceId), 'utf8'); }
+  catch (e) { return { entries: [], count: 0 }; }
+  const entries = [];
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      const entry = JSON.parse(line);
+      if (!entry || typeof entry !== 'object') continue;
+      if (taskId && String(entry.taskId || '') !== taskId) continue;
+      entries.push(entry);
+    } catch (e) { }
+  }
+  return { entries: entries.slice(-limit), count: entries.length };
+}
+
+function ratio(part, total) {
+  return total > 0 ? Math.round((part / total) * 1000) / 1000 : null;
+}
+
+function percentile(values, p) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
+  return sorted[index];
+}
+
+function computeStats(board, auditEntries, runtime) {
+  const cards = Array.isArray(board.cards) ? board.cards : [];
+  const byStatus = {};
+  for (const status of VALID_STATUS) byStatus[status] = 0;
+  for (const card of cards) byStatus[card.status] = (byStatus[card.status] || 0) + 1;
+  const reviewed = cards.filter((card) => Array.isArray(card.reviews) && card.reviews.length > 0);
+  const firstPassTasks = reviewed.filter((card) => card.reviews[0] && card.reviews[0].verdict === 'pass').length;
+  const reworkTasks = reviewed.filter((card) => card.reviews.some((review) => review && review.verdict === 'changes') || card.reviews.length > 1).length;
+  const verifiedTasks = reviewed.filter((card) => card.reviews.some((review) => review && review.verification && review.verification.ran)).length;
+  const signedOff = cards.filter((card) => card.signoff && card.signoff.at);
+  const mergedTasks = cards.filter((card) => (card.delivery && card.delivery.mergedAt) || (card.pr && card.pr.state === 'merged')).length;
+  const roundCounts = signedOff.map((card) => (Array.isArray(card.reviews) ? card.reviews.length : 0));
+  const avgRounds = roundCounts.length
+    ? Math.round((roundCounts.reduce((sum, value) => sum + value, 0) / roundCounts.length) * 100) / 100
+    : null;
+  const cycles = [];
+  for (const card of cards) {
+    if (card.status !== 'done' || !card.signoff || !card.signoff.at) continue;
+    const firstRun = (Array.isArray(card.runs) ? card.runs : []).find((run) => run && run.kind === 'execute' && run.startedAt);
+    const start = firstRun ? Date.parse(firstRun.startedAt) : NaN;
+    const end = Date.parse(card.signoff.at);
+    if (Number.isFinite(start) && Number.isFinite(end) && end >= start) cycles.push(end - start);
+  }
+  const tokensByModel = new Map();
+  let tokensTotal = 0;
+  let runTotal = 0;
+  let runExecute = 0;
+  let runReview = 0;
+  let runFailed = 0;
+  let runCancelled = 0;
+  let tasksWithTokens = 0;
+  for (const card of cards) {
+    let taskTokens = 0;
+    for (const run of Array.isArray(card.runs) ? card.runs : []) {
+      if (!run) continue;
+      runTotal += 1;
+      if (run.kind === 'review') runReview += 1; else runExecute += 1;
+      if (run.status === 'failed') runFailed += 1;
+      if (run.status === 'cancelled') runCancelled += 1;
+      const tokens = Math.max(0, asInt(run.tokens, 0));
+      if (tokens > 0) {
+        taskTokens += tokens;
+        tokensTotal += tokens;
+        const model = run.model || '（宿主默认）';
+        tokensByModel.set(model, (tokensByModel.get(model) || 0) + tokens);
+      }
+    }
+    if (taskTokens > 0) tasksWithTokens += 1;
+  }
+  const auditList = Array.isArray(auditEntries) ? auditEntries : [];
+  const countAction = (action) => auditList.filter((entry) => entry && entry.action === action).length;
+  const answers = countAction('answer');
+  const signoffs = countAction('signoff');
+  const rejects = countAction('reject');
+  const retries = countAction('retry');
+  const health = {
+    needsInput: cards.filter((card) => card.status === 'needs_input').length,
+    awaitingApproval: cards.filter((card) => card.status === 'awaiting_approval').length,
+    prPending: cards.filter((card) => card.status === 'pr_pending').length,
+    finalizeFailed: cards.filter((card) => card.status === 'finalize_failed').length,
+    blocked: cards.filter((card) => card.status === 'blocked').length,
+    failed: cards.filter((card) => card.status === 'failed').length,
+  };
+  return {
+    generatedAt: isoNow(),
+    revision: board.revision,
+    cards: {
+      total: cards.length,
+      byStatus,
+      attention: cards.filter((card) => ATTENTION_STATUS.has(card.status)).length,
+      live: cards.filter((card) => LIVE_STATUS.has(card.status)).length,
+      done: byStatus.done || 0,
+    },
+    review: {
+      reviewedTasks: reviewed.length,
+      firstPassTasks,
+      reworkTasks,
+      firstPassRate: ratio(firstPassTasks, reviewed.length),
+      reworkRate: ratio(reworkTasks, reviewed.length),
+      verifiedTasks,
+      verificationCoverage: ratio(verifiedTasks, reviewed.length),
+    },
+    delivery: { signoffTasks: signedOff.length, mergedTasks, avgRoundsToSignoff: avgRounds },
+    cycle: {
+      sampledTasks: cycles.length,
+      avgMs: cycles.length ? Math.round(cycles.reduce((sum, value) => sum + value, 0) / cycles.length) : null,
+      p50Ms: percentile(cycles, 50),
+      p90Ms: percentile(cycles, 90),
+    },
+    tokens: {
+      total: tokensTotal,
+      byModel: [...tokensByModel.entries()]
+        .map(([model, tokens]) => ({ model, tokens }))
+        .sort((a, b) => b.tokens - a.tokens)
+        .slice(0, 12),
+      avgPerTask: tasksWithTokens ? Math.round(tokensTotal / tasksWithTokens) : null,
+      tasksWithTokens,
+    },
+    runs: {
+      total: runTotal,
+      execute: runExecute,
+      review: runReview,
+      failed: runFailed,
+      cancelled: runCancelled,
+    },
+    human: {
+      answers,
+      signoffs,
+      rejects,
+      retries,
+      interventions: answers + signoffs + rejects + retries,
+    },
+    queue: {
+      waiting: runtime && Number.isFinite(Number(runtime.waiting)) ? Number(runtime.waiting) : 0,
+      running: runtime && Number.isFinite(Number(runtime.running)) ? Number(runtime.running) : 0,
+    },
+    health,
+  };
 }
 
 async function writeBoard(workspaceId, board) {
@@ -559,6 +846,18 @@ function auditEntry(actor, action, task, from, to, extra) {
     to: to || null,
     ...(extra && extra.reason ? { reason: String(extra.reason).slice(0, 2000) } : {}),
     ...(extra && extra.runId ? { runId: extra.runId } : {}),
+    ...(extra && extra.reviewId ? { reviewId: String(extra.reviewId).slice(0, 80) } : {}),
+    ...(extra && extra.model ? { model: String(extra.model).slice(0, 120) } : {}),
+    ...(extra && extra.commit ? { commit: String(extra.commit).slice(0, 64) } : {}),
+    ...(extra && extra.verification && typeof extra.verification === 'object'
+      ? {
+        verification: {
+          ran: extra.verification.ran === true,
+          passed: extra.verification.passed === true,
+          commands: Array.isArray(extra.verification.commands) ? extra.verification.commands.length : 0,
+        },
+      }
+      : {}),
   };
 }
 
@@ -1112,7 +1411,7 @@ export function apply(ctx) {
       if (!tools || typeof tools.register !== 'function') throw new Error('tools service unavailable');
       tools.register({
         name: 'review_verdict',
-        description: '给出评审结论。通过用 pass；需要返工用 changes 并列出 mustFix。必须调用。',
+        description: '给出评审结论。通过用 pass（必须带 evidence，可先用 run_verification 实际跑验证）；需要返工用 changes 并列出 mustFix。必须调用。',
         parameters: {
           type: 'object',
           properties: {
@@ -1143,11 +1442,16 @@ export function apply(ctx) {
         },
         async execute(args, exec) {
           const entry = holder.entry;
+          const verdict = (args && args.verdict) === 'pass' ? 'pass' : 'changes';
+          const mustFix = normalizeMustFix(args && args.mustFix);
+          if (entry && entry.phase === 'reviewing' && verdict === 'pass' && mustFix.length > 0) {
+            return { ok: false, message: 'pass 不能同时列出 mustFix；请改为 changes 或移除 mustFix 后重试。' };
+          }
           try {
             if (entry && entry.phase === 'reviewing') {
               entry.phase = 'decided';
               clearEntryTimer(entry);
-              await handleVerdict(entry, (args && args.verdict) === 'pass' ? 'pass' : 'changes', normalizeMustFix(args && args.mustFix), asTextList(args && args.nits, 30, 500), asTextList(args && args.evidence, 30, 500));
+              await handleVerdict(entry, verdict, mustFix, asTextList(args && args.nits, 30, 500), asTextList(args && args.evidence, 30, 500));
             }
           } catch (error) {
             logWarn('review_verdict 处理失败', String((error && error.message) || error));
@@ -1200,7 +1504,27 @@ export function apply(ctx) {
         async execute(args) {
           const entry = holder.entry;
           if (!entry || !entry.worktreePath) throw new Error('评审工作树不可用');
-          return runVerification(asText(args && args.command, 1000), entry.worktreePath);
+          const command = asText(args && args.command, 1000);
+          const result = await runVerification(command, entry.worktreePath);
+          try {
+            if (!Array.isArray(entry.verifications)) entry.verifications = [];
+            entry.verifications.push({
+              command,
+              exitCode: result.exitCode,
+              at: isoNow(),
+              summary: asText(String(result.stdout || '') + (result.stderr ? '\n' + result.stderr : ''), EVIDENCE_TEXT_MAX).trim(),
+              hash: hashText(String(result.stdout || '') + '\n' + String(result.stderr || '')),
+            });
+            if (entry.verifications.length > VERIFY_RECORD_MAX) entry.verifications = entry.verifications.slice(-VERIFY_RECORD_MAX);
+            await lockedBoard(entry.workspaceId, async (board) => {
+              const task = findTask(board, entry.taskId);
+              const run = task && task.runs.find((item) => item.id === entry.runId);
+              if (!run) return;
+              run.verifications = entry.verifications.slice();
+              await saveBoard(entry.workspaceId, board, null);
+            });
+          } catch (e) { }
+          return result;
         },
       });
       try { tools.restrict({ allow: ['read', 'glob', 'grep', 'bash'] }); }
@@ -1239,6 +1563,7 @@ export function apply(ctx) {
       severity: ['blocker', 'major', 'minor'].includes(item && item.severity) ? item.severity : 'major',
       issue: asText(item && item.issue, 2000),
       suggestion: asText(item && item.suggestion, 2000),
+      status: 'open',
     })).filter((item) => item.issue || item.file);
   }
 
@@ -1272,7 +1597,7 @@ export function apply(ctx) {
         run.status = 'done';
         run.endedAt = isoNow();
         run.summary = summary;
-        run.evidence = evidence;
+        run.evidence = mergeEvidence(evidence, entry.verifications);
         run.tokens = readTokens(entry) || run.tokens;
       }
       const from = task.status;
@@ -1375,9 +1700,19 @@ export function apply(ctx) {
     pumpQueue(workspaceId);
   }
 
-  async function handleVerdict(entry, verdict, mustFix, nits, evidence) {
+  async function handleVerdict(entry, verdict, mustFix, nits, rawEvidence) {
     const workspaceId = entry.workspaceId;
     const taskId = entry.taskId;
+    try {
+      if (!Array.isArray(entry.verifications)) entry.verifications = [];
+      if (!entry.verifications.length) {
+        const stored = findTask(await ensureBoard(workspaceId), taskId);
+        const storedRun = stored && stored.runs.find((item) => item.id === entry.runId);
+        if (storedRun && Array.isArray(storedRun.verifications)) entry.verifications = storedRun.verifications;
+      }
+    } catch (e) { }
+    const evidence = mergeEvidence(rawEvidence, entry.verifications);
+    const verification = verificationSummary(entry.verifications);
     let decision = 'blocked';
     let review = null;
     await lockedBoard(workspaceId, async (board) => {
@@ -1389,6 +1724,27 @@ export function apply(ctx) {
         run.endedAt = isoNow();
         run.tokens = readTokens(entry) || run.tokens;
       }
+      const passProblem = verdict === 'pass'
+        ? (evidence.length === 0
+          ? { action: 'review_no_evidence', message: '评审没有提供任何证据，不能通过；请实际运行验证或列出证据后重试' }
+          : (verification.ran && !verification.passed
+            ? { action: 'review_verification_failed', message: '机器验证未全部通过，不能通过评审；请修复后重试' }
+            : null))
+        : null;
+      if (passProblem) {
+        if (run) {
+          run.status = 'failed';
+          run.error = passProblem.message;
+        }
+        const from = task.status;
+        const to = confirmTransition('block', from) || 'blocked';
+        task.status = to;
+        task.error = passProblem.message;
+        task.updatedAt = isoNow();
+        await saveBoard(workspaceId, board, auditEntry('agent:' + entry.sessionId, passProblem.action, task, from, to, { runId: entry.runId, reason: task.error, model: entry.model, verification }));
+        decision = 'blocked';
+        return;
+      }
       review = {
         id: newId(),
         round: task.round,
@@ -1398,10 +1754,12 @@ export function apply(ctx) {
         mustFix,
         nits,
         evidence,
+        verification,
         startedAt: run ? run.startedAt : entry.startedAt ? new Date(entry.startedAt).toISOString() : isoNow(),
         endedAt: isoNow(),
         note: null,
       };
+      closeOpenMustFix(task, review);
       task.reviews.push(review);
       task.updatedAt = isoNow();
       if (verdict === 'pass') {
@@ -1410,7 +1768,7 @@ export function apply(ctx) {
         if (!to) return;
         task.status = to;
         task.error = null;
-        await saveBoard(workspaceId, board, auditEntry('agent:' + entry.sessionId, 'review_pass', task, from, to, { runId: entry.runId }));
+        await saveBoard(workspaceId, board, auditEntry('agent:' + entry.sessionId, 'review_pass', task, from, to, { runId: entry.runId, reviewId: review.id, model: entry.model, verification }));
         decision = 'finalize';
         return;
       }
@@ -1420,7 +1778,7 @@ export function apply(ctx) {
         const to = confirmTransition('block', from) || 'blocked';
         task.status = to;
         task.error = '评审未通过，已达到轮数上限（' + maxRounds + ' 轮），需人工处理';
-        await saveBoard(workspaceId, board, auditEntry('agent:' + entry.sessionId, 'review_changes_blocked', task, from, to, { runId: entry.runId, reason: task.error }));
+        await saveBoard(workspaceId, board, auditEntry('agent:' + entry.sessionId, 'review_changes_blocked', task, from, to, { runId: entry.runId, reviewId: review.id, reason: task.error, model: entry.model, verification }));
         decision = 'blocked';
         return;
       }
@@ -1429,7 +1787,7 @@ export function apply(ctx) {
       if (!to) return;
       task.round += 1;
       task.status = to;
-      await saveBoard(workspaceId, board, auditEntry('agent:' + entry.sessionId, 'review_changes', task, from, to, { runId: entry.runId }));
+      await saveBoard(workspaceId, board, auditEntry('agent:' + entry.sessionId, 'review_changes', task, from, to, { runId: entry.runId, reviewId: review.id, model: entry.model, verification }));
       decision = 'changes';
     });
     releaseEntry(entry, true);
@@ -1457,13 +1815,16 @@ export function apply(ctx) {
     else {
       const diff = await collectDiff(worktree.path, worktree.baseCommit);
       if (!diff.ok) failure = '无法读取交付物差异：' + diff.error;
+      else if (!String(diff.diff || '').trim()) failure = '没有可交付的已提交改动（请确认改动已提交）';
       else {
+        const head = await git(['rev-parse', 'HEAD'], worktree.path, 30000);
         delivery = {
           mode: 'local',
           branch: worktree.branch || null,
           baseCommit: worktree.baseCommit || null,
+          commit: head.ok ? gitOutput(head) : null,
           diffStat: diff.stat,
-          patchAvailable: diff.diff.length > 0,
+          patchAvailable: true,
           createdAt: isoNow(),
         };
       }
@@ -1507,7 +1868,7 @@ export function apply(ctx) {
       target.status = to;
       target.error = null;
       target.updatedAt = isoNow();
-      await saveBoard(workspaceId, current, auditEntry('host', 'finalize', target, from, to, {}));
+      await saveBoard(workspaceId, current, auditEntry('host', 'finalize', target, from, to, { commit: delivery.commit }));
     });
     pumpQueue(workspaceId);
   }
@@ -1993,6 +2354,9 @@ export function apply(ctx) {
     const allowed = ['awaiting_signoff', 'pr_pending', 'finalize_failed'].includes(task.status)
       || (options && options.internal && task.status === 'finalizing');
     if (!allowed) return { ok: false, code: 'invalid_transition', error: '当前状态不能补建 PR', board };
+    if (board.settings && board.settings.pushConsent === 'never') {
+      return { ok: false, code: 'action_failed', error: '看板设置禁止推送（pushConsent=never），无法创建 PR', board };
+    }
     const workspace = findWorkspace(workspaceId);
     if (!workspace || !workspace.path) return { ok: false, code: 'action_failed', error: '工作区路径缺失', board };
     const probe = await gitProbe(workspace.path);
@@ -2249,6 +2613,14 @@ export function apply(ctx) {
     if (!task) return { ok: false, code: 'not_ready', error: '任务不存在', board };
     const to = confirmTransition('signoff', task.status);
     if (!to) return { ok: false, code: 'invalid_transition', error: '只有待签收 / 可补建 PR 的任务可以签字', board };
+    if (!task.delivery) return { ok: false, code: 'not_ready', error: '没有可签收的交付物，请先完成交付', board };
+    const latestReview = Array.isArray(task.reviews) && task.reviews.length ? task.reviews[task.reviews.length - 1] : null;
+    const openMustFix = latestReview && Array.isArray(latestReview.mustFix)
+      ? latestReview.mustFix.filter((item) => item && item.status !== 'closed')
+      : [];
+    if (openMustFix.length) {
+      return { ok: false, code: 'action_failed', error: '仍有未关闭的评审 mustFix，不能签字', board };
+    }
     const merge = payload && payload.merge === true;
     if (merge) {
       const merged = await mergeTask(workspaceId, task);
@@ -2262,7 +2634,14 @@ export function apply(ctx) {
       const from = target.status;
       const toStatus = confirmTransition('signoff', from);
       if (!toStatus) return;
-      target.signoff = { by: 'user', at: isoNow(), note };
+      const passReview = [...target.reviews].reverse().find((review) => review && review.verdict === 'pass') || null;
+      target.signoff = {
+        by: 'user',
+        at: isoNow(),
+        note,
+        reviewId: passReview ? passReview.id : null,
+        verification: passReview && passReview.verification ? passReview.verification : null,
+      };
       target.status = toStatus;
       target.error = null;
       target.pending = null;
@@ -2270,7 +2649,11 @@ export function apply(ctx) {
       if (merge && target.delivery) target.delivery = Object.assign({}, target.delivery, { mergedAt: isoNow() });
       target.updatedAt = isoNow();
       signed = target;
-      await saveBoard(workspaceId, current, auditEntry('user', 'signoff', target, from, toStatus, { reason: note }));
+      await saveBoard(workspaceId, current, auditEntry('user', 'signoff', target, from, toStatus, {
+        reason: note,
+        reviewId: target.signoff.reviewId,
+        verification: target.signoff.verification,
+      }));
     });
     releaseTask(workspaceId, taskId, null);
     pumpQueue(workspaceId);
@@ -2432,7 +2815,15 @@ export function apply(ctx) {
         const body = await readBody(req);
         if (!body || !body.workspaceId || !body.taskId) return json(res, 400, { ok: false, error: 'workspaceId and taskId required' });
         if (!findWorkspace(body.workspaceId)) return json(res, 400, { ok: false, error: 'unknown workspaceId' });
-        const result = await startTask(String(body.workspaceId), String(body.taskId));
+        const workspaceId = String(body.workspaceId);
+        if (body.expectedRevision !== undefined && body.expectedRevision !== null) {
+          const board = await readBoard(workspaceId);
+          const revision = board ? board.revision : 0;
+          if (asInt(body.expectedRevision, -1) !== revision) {
+            return json(res, 200, { ok: false, code: 'revision_conflict', error: '看板已在别处更新，请先刷新', board });
+          }
+        }
+        const result = await startTask(workspaceId, String(body.taskId));
         return json(res, 200, result);
       }
       if (method === 'POST' && sub === '/action') {
@@ -2460,6 +2851,28 @@ export function apply(ctx) {
         if (!workspaceId || !taskId) return json(res, 400, { ok: false, error: 'workspaceId and taskId required' });
         if (!findWorkspace(workspaceId)) return json(res, 400, { ok: false, error: 'unknown workspaceId' });
         return json(res, 200, await patchTask(workspaceId, taskId));
+      }
+      if (method === 'GET' && sub === '/audit') {
+        const workspaceId = url.searchParams.get('workspaceId');
+        if (!workspaceId) return json(res, 400, { ok: false, error: 'workspaceId required' });
+        if (!findWorkspace(workspaceId)) return json(res, 400, { ok: false, error: 'unknown workspaceId' });
+        const rawLimit = url.searchParams.get('limit');
+        const limit = rawLimit === null ? AUDIT_DEFAULT_LIMIT : clampInt(rawLimit, 1, AUDIT_MAX_LIMIT, AUDIT_DEFAULT_LIMIT);
+        const taskId = url.searchParams.get('taskId') || null;
+        const audit = await readAudit(workspaceId, { limit, taskId });
+        return json(res, 200, { ok: true, entries: audit.entries, count: audit.count });
+      }
+      if (method === 'GET' && sub === '/stats') {
+        const workspaceId = url.searchParams.get('workspaceId');
+        if (!workspaceId) return json(res, 400, { ok: false, error: 'workspaceId required' });
+        if (!findWorkspace(workspaceId)) return json(res, 400, { ok: false, error: 'unknown workspaceId' });
+        const board = await ensureBoard(workspaceId);
+        const audit = await readAudit(workspaceId, { limit: AUDIT_MAX_LIMIT });
+        const runtime = {
+          waiting: (queues.get(workspaceId) || []).length,
+          running: activeExecutionCount(workspaceId),
+        };
+        return json(res, 200, { ok: true, stats: computeStats(board, audit.entries, runtime) });
       }
       return json(res, 404, { ok: false, error: 'not found', path: sub });
     } catch (error) {

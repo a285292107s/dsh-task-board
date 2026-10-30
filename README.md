@@ -107,6 +107,17 @@ dsh plugin --profile web remove dsh-task-board
 「立即创建 Git 仓库」：插件在该工作区新建一个会话并让 AI 执行 `git init` 与首次提交，完成后回到看板点
 「重新检测」即可开始执行任务。
 
+### 治理视图与证据
+
+- **头部治理条**：一次通过率、返工率、平均周期、未机器验证任务数、累计 token、排队/执行中任务数。
+  数据来自 Host 的只读 `/stats`，取不到时整条隐藏，不影响看板。
+- **证据门禁**：评审通过必须带证据；评审可以在任务副本里实际运行测试 / 构建 / lint，结果由 Host
+  记录成结构化证据（命令 + 退出码 + 输出摘要）。没有证据的通过会被拒绝；机器验证有失败也不能通过。
+  空提交（没有可交付的改动）不能签字。
+- **审计记录**：任务抽屉底部可展开该任务的审计时间线（谁 / 什么动作 / 状态从哪到哪 / 原因），
+  数据来自本机 `audit.jsonl`，不会外传。
+- **成本可见**：每次执行 / 评审的 token 用量显示在抽屉里，并按看板聚合到治理条；当前只展示、不中止。
+
 ### 在会话里让 AI 建卡
 
 也可以不切回看板：在普通会话里对 AI 说「把这件事记到看板」或「加到待办」，它会调用插件注册的
@@ -124,17 +135,21 @@ dsh plugin --profile web remove dsh-task-board
   `<workspaceId>.audit.jsonl`；只在本机。
 - 插件不上传任何数据、不采集遥测；网络请求只发生在你主动触发模型执行、AI 评审或创建 PR 时。
 - 每个任务的工作树建在仓库内 `.agents/worktrees/`；合并、推送与清理都是你显式触发的动作。
-- 每次执行/评审记录的 token 用量仅写入本机执行记录，当前不会因预算自动中止。
+- 每次执行/评审记录的 token 用量仅写入本机执行记录并用于本机聚合展示；当前不会因预算自动中止。
+- `/task-board-api/audit` 与 `/task-board-api/stats` 只读本机看板与审计文件，不访问网络。
 - `/task-board-api/git` 只允许读取已注册工作区内的路径，工作区外返回 403。
 
 ## 开发
 
-纯 JavaScript，无构建步骤：
+纯 JavaScript，无构建步骤、无运行时依赖：
 
 ```bash
-node --check index.js
-node --check client.js
+npm run check   # node --check index.js + node --check client.js
+npm test        # 假宿主回归，38 项（tests/fake-host.mjs）
 ```
+
+GitHub Actions（`.github/workflows/verify.yml`）在 push / PR 到 `main` 时跑同样三步；测试不需要
+`npm install`，fixtures 落在 gitignore 的 `tests/.fixtures/`。
 
 本地联调：
 
@@ -162,11 +177,15 @@ dsh --profile kanban-dev --port 3081
 - ✅ Host 持久化（含版本冲突检测与审计日志）、2.5 秒轮询、离线本地兜底
 - ✅ 非 Git 工作区一键引导：新建会话并发送初始化指令（`git init` + 首次提交）
 - ✅ 会话内 AI 建卡（`create_task_card`，默认进待办；看板页可见时轮询刷出并轻提示）
-- 🚧 token 预算熔断与成本看板（现在只记录）
+- ✅ 证据门禁：结构化 evidence、评审内真实跑验证并由 Host 记录、无证据/验证失败不能通过、空交付不能签字
+- ✅ 审计与指标读侧：`GET /audit`、`GET /stats`、抽屉审计时间线、头部治理条、Run token 展示
+- ✅ 启动一致性：开始前先落盘、`/start` 带版本校验；坏板 JSON 自动备份
+- 🚧 token 预算熔断（成本已展示，暂不中止）
 - 🚧 等待批准（`approve`）分支
 - 🚧 任务依赖 / 并行拆分（DAG、Team）、看板设置页、多语言
+- 🚧 上下文资产绑定、变更请求通道、风险/权限分级
 - 🚧 PR checks 自动刷新、自动 rebase、工作树保留期策略
-- 🚧 真实 DSH 实例端到端验证（尚未在真实宿主复验）
+- 🚧 真实 DSH 实例端到端验证（执行 / 评审 / 签收链路尚未在真实宿主复验）
 
 ## License
 

@@ -294,6 +294,40 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
 .kb-deliver{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border-radius:10px;border:1px solid var(--line)}
 .kb-actionrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .kb-grouplabel{margin:0;font-size:11.5px;font-weight:600;color:var(--meta)}
+.kb-gov{display:flex;flex-wrap:wrap;align-items:center;gap:5px 0;margin:14px 0 0;padding:8px 12px;border-radius:10px;border:1px solid color-mix(in srgb,var(--line) 70%,transparent);background:color-mix(in srgb,var(--ink) 3%,transparent);color:var(--ink2);font-size:11.5px}
+.kb-govitem{display:inline-flex;align-items:baseline;gap:5px;padding:0 13px 0 0;margin:0 13px 0 0;border-right:1px solid color-mix(in srgb,var(--line) 75%,transparent);min-width:0}
+.kb-govitem:last-child{border-right:none;margin-right:0;padding-right:0}
+.kb-govitem b{font-size:13px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.kb-govitem[data-tone="warn"] b{color:color-mix(in srgb,var(--med) 72%,var(--ink))}
+.kb-govkey{color:var(--meta);white-space:nowrap}
+.kb-verif{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:12px;line-height:1.5;color:var(--ink2)}
+.kb-verif[data-tone="warn"]{color:color-mix(in srgb,var(--med) 72%,var(--ink))}
+.kb-verif[data-tone="soft"]{color:color-mix(in srgb,var(--soft) 68%,var(--ink))}
+.kb-verif[data-tone="error"]{color:color-mix(in srgb,var(--hi) 72%,var(--ink))}
+.kb-evlist{display:flex;flex-direction:column;gap:5px;margin:0;padding:0 12px 12px}
+.kb-ev{display:flex;flex-direction:column;gap:3px;min-width:0;padding:7px 9px;border-radius:8px;background:color-mix(in srgb,var(--ink) 4%,transparent);font-size:12px;line-height:1.55;color:var(--ink2)}
+.kb-ev[data-tone="error"]{background:color-mix(in srgb,var(--hi) 9%,transparent)}
+.kb-evtop{display:flex;align-items:center;gap:5px 8px;flex-wrap:wrap;font-size:11px;color:var(--meta)}
+.kb-evtop .kb-ico{color:var(--meta)}
+.kb-evcmd{font-family:ui-monospace,SFMono-Regular,Consolas,'Liberation Mono',monospace;font-size:11px;color:var(--ink);background:color-mix(in srgb,var(--ink) 6%,transparent);border-radius:4px;padding:0 4px;word-break:break-all}
+.kb-evcode{font-weight:600;font-variant-numeric:tabular-nums;color:color-mix(in srgb,var(--soft) 72%,var(--ink))}
+.kb-evcode[data-ok="false"]{color:color-mix(in srgb,var(--hi) 74%,var(--ink))}
+.kb-evtext{word-break:break-word;white-space:pre-wrap}
+.kb-audit{display:flex;flex-direction:column;min-width:0}
+.kb-audit>summary{display:flex;align-items:center;gap:9px;width:100%;list-style:none;cursor:pointer;color:var(--ink)}
+.kb-audit>summary::-webkit-details-marker{display:none}
+.kb-audit>summary .kb-ico{color:var(--ink3);transition:transform .16s ease;flex:none}
+.kb-audit[open]>summary .kb-ico{transform:rotate(180deg)}
+.kb-auditlist{display:flex;flex-direction:column;gap:6px;margin:10px 0 0;padding:0;list-style:none;min-width:0}
+.kb-auditrow{display:flex;flex-direction:column;gap:3px;min-width:0;padding:8px 10px;border-radius:9px;background:color-mix(in srgb,var(--ink) 3.5%,transparent);font-size:11.5px;line-height:1.5;color:var(--ink2)}
+.kb-auditmeta{display:flex;align-items:baseline;gap:4px 10px;flex-wrap:wrap;color:var(--meta);font-variant-numeric:tabular-nums}
+.kb-auditmeta b{font-size:12px;font-weight:600;color:var(--ink)}
+.kb-auditflow{color:var(--meta);font-size:11px}
+.kb-auditreason{margin:0;color:var(--ink2);word-break:break-word}
+@media (max-width:860px){
+  .kb-gov{padding:7px 10px;gap:4px 0}
+  .kb-govitem{padding:0 10px 0 0;margin:0 10px 0 0}
+}
 `;
 
     (function injectCss() {
@@ -357,6 +391,40 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
       not_ready: "交付物还没准备好",
     };
     const ACTION_NAME = { cancel: "取消", retry: "重试", answer: "回答", approve: "批准", signoff: "签字", reject: "打回", create_pr: "补建 PR", merge: "合并", cleanup: "清理工作树" };
+    const AUDIT_ACTION = {
+      create_card: "新建任务",
+      create_task_card: "会话内建卡",
+      save_board: "保存看板",
+      submit: "提交评审",
+      review_start: "开始评审",
+      review_start_failed: "评审启动失败",
+      review_pass: "评审通过",
+      review_changes: "评审要求返工",
+      review_changes_blocked: "评审受阻",
+      review_no_evidence: "评审缺证据被拒",
+      review_verification_failed: "机器验证未通过",
+      review_blocked: "评审受阻",
+      finalize: "生成交付物",
+      finalize_failed: "交付物生成失败",
+      resume: "恢复执行",
+      blocked: "任务受阻",
+      start: "开始执行",
+      start_failed: "启动失败",
+      running: "进入执行",
+      queue: "排队等待",
+      request_input: "请求输入",
+      run_timeout: "执行超时",
+      review_timeout: "评审超时",
+      create_pr_pending: "待补建 PR",
+      create_pr: "创建 PR",
+      cancel: "取消执行",
+      answer: "回答问题",
+      signoff: "签字",
+      reject: "打回返工",
+      merge: "合并",
+      cleanup: "清理工作树",
+      reconcile: "启动对账",
+    };
 
     const LABELS = [
       { id: "design", name: "设计", tone: "blue" },
@@ -523,6 +591,51 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
     function fmtTime(v) { return v ? String(v).slice(0, 16).replace("T", " ") : ""; }
     function autosize(el) { if (!el) return; el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; }
     function formatTokens(n) { return Number(n || 0).toLocaleString("en-US"); }
+    function formatRate(v) {
+      if (v == null || !isFinite(Number(v))) return "—";
+      return (Math.round(Number(v) * 1000) / 10) + "%";
+    }
+    function formatCycle(ms) {
+      if (ms == null || !isFinite(Number(ms))) return "—";
+      const n = Math.max(0, Number(ms));
+      if (n < 60000) return "<1 分钟";
+      const minutes = Math.round(n / 60000);
+      if (minutes < 60) return minutes + " 分钟";
+      const hours = Math.floor(minutes / 60);
+      if (hours < 48) return (minutes % 60) ? hours + " 小时 " + (minutes % 60) + " 分" : hours + " 小时";
+      const days = Math.floor(hours / 24);
+      return (hours % 24) ? days + " 天 " + (hours % 24) + " 小时" : days + " 天";
+    }
+    function fmtStamp(v) { return v ? String(v).slice(0, 19).replace("T", " ") : ""; }
+    function normalizeEvidence(list) {
+      if (!Array.isArray(list)) return [];
+      const out = [];
+      list.forEach(function (item) {
+        if (item == null) return;
+        if (typeof item === "string") { if (item.trim()) out.push({ type: "note", text: item }); return; }
+        if (typeof item !== "object") { out.push({ type: "note", text: String(item) }); return; }
+        const text = typeof item.text === "string" ? item.text
+          : typeof item.summary === "string" ? item.summary
+          : typeof item.note === "string" ? item.note : "";
+        out.push({
+          type: item.type === "verification" ? "verification" : "note",
+          text: text,
+          command: item.command ? String(item.command) : "",
+          exitCode: item.exitCode == null ? null : item.exitCode,
+          at: item.at ? String(item.at) : "",
+        });
+      });
+      return out;
+    }
+    function actorText(actor) {
+      const s = String(actor || "");
+      if (!s) return "—";
+      if (s === "user") return "你";
+      if (s === "host") return "Host";
+      if (s.indexOf("agent:") === 0) return "AI · " + shortId(s.slice(6));
+      return shortId(s);
+    }
+    function statusText(v) { const s = String(v || ""); if (!s) return ""; return (STATUS[s] && STATUS[s].label) || s; }
     function budgetCustom(card) { const b = card.budget || {}; return b.maxRounds != null || b.maxTokens != null || b.maxMinutes != null; }
     function baseCustom(card) { const b = card.base || {}; return b.mode === "branch" || !!b.ignoreDirty; }
     function buildPromptPreview(card) {
@@ -575,6 +688,7 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
       const [saveState, setSaveState] = useState("ok");
       const [startError, setStartError] = useState(null);
       const [initGitBusy, setInitGitBusy] = useState(false);
+      const [govStats, setGovStats] = useState(null);
 
       const boardRef = useRef(null);
       const dragRef = useRef(null);
@@ -588,6 +702,8 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
       const editSeqRef = useRef(0);
       const savingRef = useRef(false);
       const saveQueuedRef = useRef(false);
+      const savePromiseRef = useRef(null);
+      const saveConflictRef = useRef(false);
       const pollBusyRef = useRef(false);
       const initGitBusyRef = useRef(false);
 
@@ -613,6 +729,22 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
         })();
         return () => { cancelled = true; };
       }, []);
+
+      useEffect(() => {
+        if (!wsId) return undefined;
+        const forWs = wsId;
+        let cancelled = false;
+        api("/stats?workspaceId=" + encodeURIComponent(forWs))
+          .then((d) => {
+            if (cancelled || wsIdRef.current !== forWs) return;
+            setGovStats(d && d.stats ? d.stats : null);
+          })
+          .catch(() => {
+            if (cancelled || wsIdRef.current !== forWs) return;
+            setGovStats(null);
+          });
+        return () => { cancelled = true; };
+      }, [wsId, board ? board.revision : null]);
 
       async function loadBoard(id) {
         try { const d = await api("/board?workspaceId=" + encodeURIComponent(id)); if (d && d.board) return normalizeBoard(d.board) || emptyBoard(); } catch (e) { }
@@ -642,6 +774,7 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
       function switchWorkspace(id) {
         setSwitcher(false);
         if (id === wsId) return;
+        setGovStats(null);
         loadBoard(id).then((next) => {
           serverRevRef.current = next.revision || 0;
           dirtyRef.current = false;
@@ -664,7 +797,23 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
         if (noticeText) setNotice({ kind: "warn", text: noticeText });
       }
       async function saveNow() {
-        if (savingRef.current) { saveQueuedRef.current = true; return; }
+        if (savingRef.current) {
+          saveQueuedRef.current = true;
+          if (savePromiseRef.current) { try { await savePromiseRef.current; } catch (e) { } }
+          return;
+        }
+        const p = doSave();
+        savePromiseRef.current = p;
+        try { await p; } finally { if (savePromiseRef.current === p) savePromiseRef.current = null; }
+      }
+      async function flushSave() {
+        if (!dirtyRef.current && !savingRef.current) return true;
+        saveConflictRef.current = false;
+        await saveNow();
+        if (dirtyRef.current || savingRef.current) await saveNow();
+        return !dirtyRef.current && !savingRef.current && !saveConflictRef.current;
+      }
+      async function doSave() {
         const b = boardStateRef.current;
         if (!b || !wsIdRef.current) return;
         if (!dirtyRef.current) { setSaveState("ok"); return; }
@@ -684,8 +833,12 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
             } else {
               setSaveState("pending");
             }
+            if (d.result && Array.isArray(d.result.warnings) && d.result.warnings.length) {
+              setNotice({ kind: "warn", text: d.result.warnings.join(" ") });
+            }
           } else if (d && d.ok === false) {
             if (d.code === "revision_conflict") {
+              saveConflictRef.current = true;
               setSaveState("error");
               const next = d.board ? normalizeBoard(d.board) : null;
               if (next) applyServerBoard(next); else await refreshBoard();
@@ -699,6 +852,7 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
           }
         } catch (e) {
           if (e.code === "revision_conflict") {
+            saveConflictRef.current = true;
             setSaveState("error");
             const next = e.data && e.data.board ? normalizeBoard(e.data.board) : null;
             if (next) applyServerBoard(next); else await refreshBoard();
@@ -835,10 +989,22 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
         if (gitInfo && gitInfo.isLinkedWorktree) { setNotice({ kind: "warn", text: "当前是 linked worktree，不能在这里执行任务。" }); setOpenId(cur.id); return; }
         setNotice(null);
         setStartError(null);
+        const flushed = await flushSave();
+        if (!flushed) {
+          const text = saveConflictRef.current ? "看板已在别处更新，已刷新，请重试。" : "改动还没保存成功，先确认网络后重试。";
+          setNotice({ kind: "warn", text: text });
+          setStartError({ taskId: cur.id, text: text });
+          setOpenId(cur.id);
+          return;
+        }
         try {
-          const d = await api("/start", { method: "POST", body: JSON.stringify({ workspaceId: wsIdRef.current, taskId: cur.id }) });
+          const d = await api("/start", { method: "POST", body: JSON.stringify({ workspaceId: wsIdRef.current, taskId: cur.id, expectedRevision: serverRevRef.current }) });
           if (d && d.ok) {
             if (d.board) applyServerBoard(normalizeBoard(d.board)); else await refreshBoard();
+          } else if (d && d.code === "revision_conflict") {
+            await refreshBoard("看板已在别处更新，已刷新，请重试。");
+            setStartError({ taskId: cur.id, text: "看板已在别处更新，请重试。" });
+            setOpenId(cur.id);
           } else {
             const text = failureText(d);
             setNotice({ kind: "error", text: "没能开始：" + text });
@@ -846,6 +1012,12 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
             setOpenId(cur.id);
           }
         } catch (e) {
+          if (e.code === "revision_conflict") {
+            await refreshBoard("看板已在别处更新，已刷新，请重试。");
+            setStartError({ taskId: cur.id, text: "看板已在别处更新，请重试。" });
+            setOpenId(cur.id);
+            return;
+          }
           const text = e.offline ? "Host 启动接口不可用" : (e.message || "启动失败");
           setNotice({ kind: "error", text: "没能开始：" + text + "，任务已留在原状态。" });
           setStartError({ taskId: cur.id, text: text });
@@ -999,6 +1171,22 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
         cards.forEach((c) => { if (c.status === "done") done += 1; if (NEEDS_ATTENTION.indexOf(c.status) >= 0) attention += 1; if (c.status === "running" || c.status === "reviewing") running += 1; });
         return { done, attention, running, total: cards.length, open: cards.length - done };
       }, [cards]);
+      const govItems = useMemo(() => {
+        if (!govStats) return null;
+        const reviewStats = govStats.review || {};
+        const cycleStats = govStats.cycle || {};
+        const tokenStats = govStats.tokens || {};
+        const queueStats = govStats.queue || {};
+        const unverified = Math.max(0, Number(reviewStats.reviewedTasks || 0) - Number(reviewStats.verifiedTasks || 0));
+        return [
+          { key: "firstPass", label: "一次通过率", value: formatRate(reviewStats.firstPassRate), title: "首条评审即通过的任务占比" },
+          { key: "rework", label: "返工率", value: formatRate(reviewStats.reworkRate), title: "出现过返工或评审超过一轮的任务占比" },
+          { key: "cycle", label: "平均周期", value: formatCycle(cycleStats.avgMs), title: "已完成任务从首次执行到签字的平均耗时" },
+          { key: "unverified", label: "未机器验证", value: String(unverified), title: "已评审但从未运行机器验证的任务数", tone: unverified ? "warn" : null },
+          { key: "tokens", label: "Token 总量", value: formatTokens(tokenStats.total || 0), title: "本看板累计记录的 token 消耗" },
+          { key: "queue", label: "待处理", value: String(Number(queueStats.waiting || 0) + Number(queueStats.running || 0)), title: "排队中与执行中的任务数" },
+        ];
+      }, [govStats]);
       const flow = LANES.map((l) => ({ lane: l, n: byLane[l.id].length }));
 
       function renderCard(card, animate, delay) {
@@ -1087,6 +1275,9 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
               h("button", { type: "button", className: "kb-btn kb-btn--primary", onClick: () => newTask() }, h(Icon, { name: "plus", size: 15 }), "新建任务")
             )
           ),
+          govItems ? h("div", { className: "kb-gov", role: "group", "aria-label": "治理指标" },
+            govItems.map((it) => h("span", { key: it.key, className: "kb-govitem", "data-tone": it.tone || null, title: it.title },
+              h("span", { className: "kb-govkey" }, it.label), h("b", null, it.value)))) : null,
           h("div", { className: "kb-flow", "aria-hidden": "true" },
             flow.map((f) => h("div", { key: f.lane.id, className: "kb-flowseg", style: { flexGrow: Math.max(f.n, 0.001), background: f.lane.flow }, title: f.lane.name + ": " + f.n }))),
           h("div", { className: "kb-toolbar" },
@@ -1119,7 +1310,7 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
         openCard ? [
           h("div", { key: "scrim", className: "kb-scrim", onClick: dismissDrawer }),
           h(Drawer, {
-            key: openCard.id, card: openCard, gitInfo: gitInfo, saveState: saveState,
+            key: openCard.id, card: openCard, gitInfo: gitInfo, saveState: saveState, workspaceId: wsId,
             startError: startError && startError.taskId === openCard.id ? startError.text : null,
             onPatch: (o) => patch(openCard.id, o),
             onStart: () => startTask(openCard),
@@ -1186,6 +1377,9 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
       });
       const [showMeta, setShowMeta] = useState(false);
       const autoExecRef = useRef(false);
+      const [auditStatus, setAuditStatus] = useState("idle");
+      const [auditEntries, setAuditEntries] = useState([]);
+      const [auditError, setAuditError] = useState("");
 
       const st = STATUS[card.status] || STATUS.todo;
       const lane = LANE_BY_ID[st.lane] || LANES[0];
@@ -1194,6 +1388,8 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
       const base = card.base || {};
       const runs = Array.isArray(card.runs) ? card.runs : [];
       const reviews = Array.isArray(card.reviews) ? card.reviews : [];
+      const lastReview = reviews.length ? reviews[reviews.length - 1] : null;
+      const lastVerification = lastReview && lastReview.verification ? lastReview.verification : null;
       const execRuns = runs.filter(function (r) { return !r || !r.kind || r.kind === "execute"; });
       const worktree = (function () { for (let i = runs.length - 1; i >= 0; i--) { if (runs[i] && runs[i].worktree) return runs[i].worktree; } return card.worktree || null; })();
       const delivery = card.delivery || null;
@@ -1211,6 +1407,7 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
       const canRun = startable && !missingTitle && !missingAcceptance && !missingBranch && !gitBlocked;
       const live = LIVE_STATUS.indexOf(card.status) >= 0;
       const canSignoff = card.status === "awaiting_signoff" || card.status === "pr_pending";
+      const verifyWarning = canSignoff && !!lastVerification && lastVerification.ran === false;
       const canCreatePr = card.status === "awaiting_signoff" || card.status === "pr_pending" || card.status === "finalize_failed";
       const canMerge = card.status === "done";
       const canCleanup = card.status === "done" || card.status === "cancelled";
@@ -1259,6 +1456,8 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
       if (pr) rows.push(["PR", "#" + (pr.number || "") + (pr.state ? " · " + pr.state : "") + (pr.checks ? " · checks " + pr.checks : "")]);
       if (sign) rows.push(["签字", String(sign.by || "我") + (sign.at ? " · " + fmtTime(sign.at) : "") + (sign.note ? " · " + sign.note : "")]);
       const hasRecord = rows.length > 0 || execRuns.length > 0 || reviews.length > 0 || !!pending || !!delivery || !!card.error;
+      const auditNum = hasRecord ? "05" : "04";
+      const auditSummary = auditStatus === "loading" ? "加载中…" : auditStatus === "error" ? "加载失败" : auditStatus === "ok" ? (auditEntries.length ? auditEntries.length + " 条" : "暂无") : "最近 50 条";
 
       const saveLabel = props.saveState === "error" ? "仅保存在本地" : props.saveState === "pending" ? "保存中…" : "已保存";
       const saveIcon = props.saveState === "error" ? "alert" : "check";
@@ -1339,6 +1538,88 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
         if (ok === false) setConfirmDel(false);
       }
 
+      function loadAudit() {
+        if (!props.workspaceId) {
+          setAuditEntries([]);
+          setAuditError("没有可用的工作区，无法加载审计记录。");
+          setAuditStatus("error");
+          return;
+        }
+        setAuditStatus("loading");
+        setAuditError("");
+        api("/audit?workspaceId=" + encodeURIComponent(props.workspaceId) + "&taskId=" + encodeURIComponent(card.id) + "&limit=50")
+          .then(function (d) {
+            if (d && d.ok && Array.isArray(d.entries)) {
+              setAuditEntries(d.entries.slice().reverse());
+              setAuditStatus("ok");
+            } else {
+              setAuditEntries([]);
+              setAuditError("Host 没有返回审计记录。");
+              setAuditStatus("error");
+            }
+          })
+          .catch(function (e) {
+            setAuditEntries([]);
+            setAuditError(e && e.status === 404 ? "Host 版本还不支持审计记录，看板其他功能不受影响。" : "审计记录加载失败，请稍后重试。");
+            setAuditStatus("error");
+          });
+      }
+      function onAuditToggle(e) {
+        if (!e.currentTarget || !e.currentTarget.open) return;
+        if (auditStatus === "idle" || auditStatus === "error") loadAudit();
+      }
+      function evidenceItem(ev, i) {
+        const failed = ev.exitCode != null && Number(ev.exitCode) !== 0;
+        const ok = ev.exitCode != null && Number(ev.exitCode) === 0;
+        return h("div", { key: i, className: "kb-ev", "data-tone": failed ? "error" : null },
+          h("div", { className: "kb-evtop" },
+            h(Icon, { name: ev.type === "verification" ? "check" : "chat", size: 12 }),
+            h("span", null, ev.type === "verification" ? "机器验证" : "记录"),
+            ev.command ? h("code", { className: "kb-evcmd" }, ev.command) : null,
+            ev.exitCode != null ? h("span", { className: "kb-evcode", "data-ok": ok ? "true" : "false" }, "exit " + ev.exitCode) : null,
+            ev.at ? h("span", null, fmtStamp(ev.at)) : null),
+          ev.text ? h("div", { className: "kb-evtext" }, ev.text) : null);
+      }
+      function evidenceNode(list, label) {
+        const items = normalizeEvidence(list);
+        if (!items.length) return null;
+        return h("details", { className: "kb-prompt" },
+          h("summary", null, label + " " + items.length + " 条"),
+          h("div", { className: "kb-evlist" }, items.map(evidenceItem)));
+      }
+      function verificationLine(v) {
+        const ran = !!(v && v.ran === true);
+        const passed = !!(v && v.passed === true);
+        const commands = v && Array.isArray(v.commands) ? v.commands : [];
+        const text = ran
+          ? "机器验证：已运行" + (commands.length ? " " + commands.length + " 条" : "") + "（" + (passed ? "全部通过" : "有失败") + "）"
+          : "机器验证：未运行";
+        return h("div", { className: "kb-verif", "data-tone": ran ? (passed ? "soft" : "error") : "warn" },
+          h(Icon, { name: ran ? (passed ? "check" : "alert") : "alert", size: 13 }),
+          h("span", null, text));
+      }
+      function verificationCommands(v) {
+        const commands = v && v.ran && Array.isArray(v.commands) ? v.commands : [];
+        if (!commands.length) return null;
+        return h("details", { className: "kb-prompt" },
+          h("summary", null, "验证命令 " + commands.length + " 条"),
+          h("div", { className: "kb-evlist" }, commands.map(function (c, k) {
+            return evidenceItem({ type: "verification", command: c && c.command, exitCode: c && c.exitCode, at: c && c.at }, k);
+          })));
+      }
+      function auditNode(entry, i) {
+        const from = statusText(entry.from);
+        const to = statusText(entry.to);
+        const flow = (from || to) ? (from || "—") + " → " + (to || "—") : "";
+        return h("li", { key: entry.id || i, className: "kb-auditrow" },
+          h("div", { className: "kb-auditmeta" },
+            h("b", null, AUDIT_ACTION[entry.action] || entry.action || "记录"),
+            h("span", null, actorText(entry.actor)),
+            h("span", null, fmtStamp(entry.ts || entry.at))),
+          flow ? h("div", { className: "kb-auditflow" }, flow) : null,
+          entry.reason ? h("p", { className: "kb-auditreason" }, entry.reason) : null);
+      }
+
       function rowNode(key, value) {
         return h("div", { key: key, className: "kb-row" }, h("dt", { className: "kb-rowkey" }, key), h("dd", { className: "kb-rowval" }, value));
       }
@@ -1354,12 +1635,13 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
           h("div", { className: "kb-recmeta" },
             r.startedAt ? h("span", null, fmtTime(r.startedAt) + (r.endedAt ? " → " + fmtTime(r.endedAt) : "")) : null,
             r.worktree && r.worktree.branch ? h("span", null, "工作树 " + r.worktree.branch) : null,
+            r.tokens ? h("span", null, "Token " + formatTokens(r.tokens)) : null,
             r.sessionId ? h("span", null, "会话 ", h("code", null, shortId(r.sessionId))) : null),
           r.sessionId ? h("div", { className: "kb-actionrow" },
             h("button", { type: "button", className: "kb-btn--link", onClick: function () { props.onOpenSession(r.sessionId); } }, "打开会话")) : null,
           r.summary ? h("div", { className: "kb-recbody" }, r.summary) : null,
           r.error ? h("div", { className: "kb-recbody", "data-kind": "error" }, r.error) : null,
-          r.evidence && r.evidence.length ? h("details", { className: "kb-prompt" }, h("summary", null, "证据 " + r.evidence.length + " 条"), h("pre", null, r.evidence.join("\n"))) : null);
+          evidenceNode(r.evidence, "证据"));
       }
       function reviewNode(rv, i) {
         const verdict = rv.verdict === "pass" ? { label: "通过", tone: "signoff" } : rv.verdict === "changes" ? { label: "需返工", tone: "warn" } : { label: "无结论", tone: "idle" };
@@ -1372,6 +1654,8 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
           h("div", { className: "kb-recmeta" },
             rv.startedAt ? h("span", null, fmtTime(rv.startedAt) + (rv.endedAt ? " → " + fmtTime(rv.endedAt) : "")) : null,
             rv.sessionId ? h("span", null, "会话 ", h("code", null, shortId(rv.sessionId))) : null),
+          verificationLine(rv.verification),
+          verificationCommands(rv.verification),
           rv.sessionId ? h("div", { className: "kb-actionrow" },
             h("button", { type: "button", className: "kb-btn--link", onClick: function () { props.onOpenSession(rv.sessionId); } }, "打开会话")) : null,
           rv.mustFix && rv.mustFix.length ? h("ul", { className: "kb-mustfix" }, rv.mustFix.map(function (m, k) {
@@ -1386,7 +1670,7 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
           })) : null,
           rv.nits && rv.nits.length ? h("ul", { className: "kb-nits" }, rv.nits.map(function (n, k) { return h("li", { key: k }, n); })) : null,
           rv.note ? h("div", { className: "kb-recbody" }, rv.note) : null,
-          rv.evidence && rv.evidence.length ? h("details", { className: "kb-prompt" }, h("summary", null, "证据 " + rv.evidence.length + " 条"), h("pre", null, rv.evidence.join("\n"))) : null);
+          evidenceNode(rv.evidence, "证据"));
       }
 
       const pendingNode = pending ? h("div", { className: "kb-rec", "data-tone": card.status === "needs_input" ? "warn" : null },
@@ -1417,6 +1701,9 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
           safeUrl(pr.url) ? rowNode("链接", h("a", { href: safeUrl(pr.url), target: "_blank", rel: "noopener noreferrer", className: "kb-btn--link" }, safeUrl(pr.url))) : null)) : null;
 
       const signoffForm = canSignoff ? h("div", { className: "kb-fieldgroup" },
+        verifyWarning ? h("div", { className: "kb-banner", style: { margin: 0 }, role: "status" },
+          h(Icon, { name: "alert", size: 15 }),
+          "本次评审未运行机器验证：签字不会被拦截，请自行确认改动。") : null,
         h("div", { className: "kb-field" },
           h("label", { htmlFor: "kb-sign-note" }, "签收备注"),
           h("textarea", { id: "kb-sign-note", className: "kb-area", rows: 2, value: note, placeholder: "签字说明；打回时作为返工意见", onChange: function (e) { setNote(e.target.value); } })),
@@ -1514,7 +1801,21 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
                 h("div", { className: "kb-labels" }, LABELS.map(function (l) {
                   const on = (card.labels || []).indexOf(l.id) >= 0;
                   return h("button", { key: l.id, type: "button", className: "kb-labeltoggle", "aria-pressed": on ? "true" : "false", style: { "--c": "var(--t-" + l.tone + ")" }, onClick: () => toggleLabel(l.id) }, h("span", { className: "kb-chipdot" }), l.name);
-                })))) : null)
+                })))) : null),
+
+          h("section", { className: "kb-sec" },
+            h("details", { className: "kb-audit", onToggle: onAuditToggle },
+              h("summary", null,
+                h("span", { className: "kb-secnum" }, auditNum),
+                h("span", { className: "kb-sectitle" }, "审计记录"),
+                h("span", { className: "kb-secsum" }, auditSummary),
+                h(Icon, { name: "chevron", size: 14 })),
+              auditStatus === "loading" ? h("p", { className: "kb-hint" }, "正在加载审计记录…")
+                : auditStatus === "error" ? h("div", { className: "kb-fieldgroup" },
+                  h("p", { className: "kb-hint", "data-kind": "warn" }, auditError || "审计记录加载失败。"),
+                  h("div", { className: "kb-actionrow" }, h("button", { type: "button", className: "kb-btn kb-btn--ghost kb-btn--sm", onClick: loadAudit }, "重试")))
+                : auditEntries.length ? h("ol", { className: "kb-auditlist" }, auditEntries.map(auditNode))
+                : h("p", { className: "kb-hint" }, "还没有审计记录。")))
         ),
         h("div", { className: "kb-drawerfoot" },
           confirmDel
