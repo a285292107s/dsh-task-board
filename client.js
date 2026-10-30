@@ -482,8 +482,13 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
 
     async function api(path, opts) {
       let res;
+      let reqPath = path;
       try {
-        res = await fetch(API_BASE + path, Object.assign({ headers: { "content-type": "application/json" } }, opts || {}));
+        const tok = lsGet("dsh.task-board.token");
+        if (tok) reqPath += (path.indexOf("?") >= 0 ? "&" : "?") + "token=" + encodeURIComponent(tok);
+      } catch (e) { }
+      try {
+        res = await fetch(API_BASE + reqPath, Object.assign({ headers: { "content-type": "application/json" } }, opts || {}));
       } catch (e) {
         const err = new Error("Host 接口不可用");
         err.offline = true;
@@ -689,6 +694,10 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
       const [startError, setStartError] = useState(null);
       const [initGitBusy, setInitGitBusy] = useState(false);
       const [govStats, setGovStats] = useState(null);
+      const [settingsOpen, setSettingsOpen] = useState(false);
+      const [settingsDraft, setSettingsDraft] = useState(null);
+      const [settingsBusy, setSettingsBusy] = useState(false);
+      const [settingsErr, setSettingsErr] = useState(null);
 
       const boardRef = useRef(null);
       const dragRef = useRef(null);
@@ -906,6 +915,21 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
       }, []);
 
       useEffect(() => {
+        if (!wsId || typeof EventSource === "undefined") return;
+        let es = null;
+        try {
+          let esUrl = API_BASE + "/events?workspaceId=" + encodeURIComponent(wsId);
+          const tok = lsGet("dsh.task-board.token");
+          if (tok) esUrl += "&token=" + encodeURIComponent(tok);
+          es = new EventSource(esUrl);
+          es.addEventListener("board", function () {
+            if (!dirtyRef.current && !savingRef.current) refreshBoard();
+          });
+        } catch (e) { es = null; }
+        return function () { if (es) es.close(); };
+      }, [wsId]);
+
+      useEffect(() => {
         if (!notice || notice.kind !== "info") return;
         const t = setTimeout(() => { setNotice(null); }, 4000);
         return () => clearTimeout(t);
@@ -1057,6 +1081,10 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
         }
       }
       async function openSession(card, sessionId) {
+        try {
+          const nav = typeof clientService === "function" ? clientService("uiWorkspace") : null;
+          if (nav && typeof nav.openSession === "function") { nav.openSession(String(sessionId)); return; }
+        } catch (e) { }
         const ok = await copyText(String(sessionId));
         setNotice(ok
           ? { kind: "info", text: "会话 id 已复制，可在宿主的会话列表里打开。" }
@@ -1247,6 +1275,47 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
         );
       }
 
+      const SETTING_NUMBERS = [
+        { key: "concurrency", label: "同时执行数", min: 1, max: 8 },
+        { key: "reviewConcurrency", label: "同时评审数", min: 1, max: 8 },
+        { key: "maxRounds", label: "返工轮数上限", min: 1, max: 8 },
+        { key: "maxMinutesPerRun", label: "单次执行时限（分钟）", min: 1, max: 120 },
+        { key: "maxMinutesPerTask", label: "任务总时限（分钟）", min: 1, max: 480 },
+        { key: "maxTokensPerTask", label: "任务 token 上限", min: 1000, max: 6000000 },
+      ];
+      function openSettings() {
+        const b = boardStateRef.current || board;
+        if (!b) { setNotice({ kind: "warn", text: "看板未就绪" }); return; }
+        setSettingsDraft(Object.assign({}, DEFAULT_SETTINGS, b.settings || {}));
+        setSettingsErr(null);
+        setSettingsOpen(true);
+      }
+      function closeSettings() { setSettingsOpen(false); }
+      function setSettingsField(key, value) { setSettingsDraft((d) => Object.assign({}, d || {}, { [key]: value })); }
+      async function saveSettings() {
+        if (!wsIdRef.current) { setSettingsErr("工作区未就绪"); return; }
+        setSettingsBusy(true);
+        setSettingsErr(null);
+        try {
+          const d = await api("/settings", { method: "POST", body: JSON.stringify({ workspaceId: wsIdRef.current, expectedRevision: serverRevRef.current, settings: settingsDraft }) });
+          if (d && d.ok) {
+            if (d.board) { const nb = normalizeBoard(d.board); if (nb) { serverRevRef.current = nb.revision; setBoard(nb); } }
+            try {
+              if (settingsDraft && settingsDraft.authToken) lsSet("dsh.task-board.token", settingsDraft.authToken);
+              else lsSet("dsh.task-board.token", "");
+            } catch (e) { }
+            setSettingsOpen(false);
+            setNotice({ kind: "ok", text: "设置已保存" });
+          } else {
+            setSettingsErr((CODE_TEXT[d && d.code] || "保存失败") + (d && d.error ? "：" + d.error : ""));
+          }
+        } catch (e) {
+          setSettingsErr(e && e.offline ? "Host 不可用" : String((e && e.message) || "保存失败"));
+        } finally {
+          setSettingsBusy(false);
+        }
+      }
+
       const openCard = openId ? cards.find((c) => c.id === openId) : null;
       const gitBad = gitInfo && (!gitInfo.isRepo || !gitInfo.hasHead);
 
@@ -1272,6 +1341,7 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
               )
             ),
             h("div", { className: "kb-actions" },
+              h("button", { type: "button", className: "kb-btn kb-btn--ghost", onClick: openSettings, title: "看板设置" }, "设置"),
               h("button", { type: "button", className: "kb-btn kb-btn--primary", onClick: () => newTask() }, h(Icon, { name: "plus", size: 15 }), "新建任务")
             )
           ),
@@ -1321,6 +1391,37 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
             onNotice: setNotice,
             onOpenSession: (sessionId) => openSession(openCard, sessionId),
           }),
+        ] : null,
+
+        settingsOpen && settingsDraft ? [
+          h("div", { key: "sscrim", className: "kb-scrim", onClick: closeSettings }),
+          h("div", {
+            key: "spanel", role: "dialog", "aria-modal": "true", "aria-label": "看板设置",
+            style: { position: "fixed", top: "8vh", left: "50%", transform: "translateX(-50%)", width: "min(460px, 92vw)", maxHeight: "80vh", overflow: "auto", background: "var(--surface, #fff)", color: "var(--ink, #111)", border: "1px solid var(--line, #ddd)", borderRadius: "14px", boxShadow: "0 20px 60px rgba(0,0,0,.28)", padding: "20px", zIndex: 60 },
+          },
+            h("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" } },
+              h("h2", { style: { margin: 0, fontSize: "17px" } }, "看板设置"),
+              h("button", { type: "button", className: "kb-btn kb-btn--ghost kb-btn--sm", onClick: closeSettings }, "关闭")),
+            h("div", { style: { display: "grid", gap: "10px" } },
+              SETTING_NUMBERS.map((f) => h("label", { key: f.key, style: { display: "grid", gridTemplateColumns: "1fr 120px", alignItems: "center", gap: "10px", fontSize: "13px" } },
+                h("span", null, f.label),
+                h("input", { type: "number", min: f.min, max: f.max, value: settingsDraft[f.key], onChange: (e) => setSettingsField(f.key, e.target.value === "" ? "" : Number(e.target.value)), style: { height: "30px", borderRadius: "8px", border: "1px solid var(--line, #ddd)", padding: "0 8px", font: "inherit" } }))),
+              h("label", { style: { display: "grid", gridTemplateColumns: "1fr 120px", alignItems: "center", gap: "10px", fontSize: "13px" } },
+                h("span", null, "PR 模式"),
+                h("select", { value: settingsDraft.prMode || "auto", onChange: (e) => setSettingsField("prMode", e.target.value) },
+                  h("option", { value: "auto" }, "auto"), h("option", { value: "local" }, "local"), h("option", { value: "manual" }, "manual"))),
+              h("label", { style: { display: "grid", gridTemplateColumns: "1fr 120px", alignItems: "center", gap: "10px", fontSize: "13px" } },
+                h("span", null, "推送授权"),
+                h("select", { value: settingsDraft.pushConsent || "first", onChange: (e) => setSettingsField("pushConsent", e.target.value) },
+                  h("option", { value: "first" }, "first"), h("option", { value: "always" }, "always"), h("option", { value: "never" }, "never"))),
+              h("label", { style: { display: "grid", gridTemplateColumns: "1fr 120px", alignItems: "center", gap: "10px", fontSize: "13px" } },
+                h("span", null, "鉴权 token"),
+                h("input", { type: "text", value: settingsDraft.authToken || "", placeholder: "留空=不鉴权", onChange: (e) => setSettingsField("authToken", e.target.value), style: { height: "30px", borderRadius: "8px", border: "1px solid var(--line, #ddd)", padding: "0 8px", font: "inherit" } }))),
+            settingsErr ? h("p", { style: { color: "#c0392b", fontSize: "12px", marginTop: "10px" } }, settingsErr) : null,
+            h("div", { style: { display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "16px" } },
+              h("button", { type: "button", className: "kb-btn kb-btn--ghost", onClick: closeSettings }, "取消"),
+              h("button", { type: "button", className: "kb-btn kb-btn--primary", disabled: settingsBusy, onClick: saveSettings }, settingsBusy ? "保存中…" : "保存设置"))
+          ),
         ] : null,
 
         ghost ? h("div", { className: "kb-ghost", style: { transform: "translate(" + ghost.x + "px," + ghost.y + "px)", width: ghost.w + "px" } },
@@ -1518,10 +1619,12 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
       function doSignoff() { act("signoff", "signoff", { note: note.trim(), merge: !!mergeAfter }); }
       function doReject() { act("reject", "reject", { note: note.trim() }); }
       function doCancel() { act("cancel", "cancel", {}); }
+      function doApprove() { act("approve", "approve", { note: note.trim() }); }
       function doRetry() { act("retry", "retry", {}); }
       function doCreatePr() { act("create_pr", "create_pr", {}); }
       function doMerge() { act("merge", "merge", {}); }
       function doCleanup() { act("cleanup", "cleanup", {}); }
+      function doArchive() { act("archive", "archive", {}); }
       function doAnswer() {
         const text = answer.trim(); if (!text) return;
         runAsync("answer", function () {
@@ -1679,7 +1782,8 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
         pending.kind === "needs_input" ? h("div", { className: "kb-field" },
           h("textarea", { className: "kb-area", rows: 3, value: answer, placeholder: "回答会带回执行 / 评审会话继续", onChange: function (e) { setAnswer(e.target.value); } }),
           h("div", { className: "kb-actionrow" },
-            h("button", { type: "button", className: "kb-btn kb-btn--primary kb-btn--sm", disabled: !answer.trim() || !!busy, onClick: doAnswer }, busy === "answer" ? "提交中…" : "提交回答"))) : null) : null;
+            h("button", { type: "button", className: "kb-btn kb-btn--primary kb-btn--sm", disabled: !answer.trim() || !!busy, onClick: doAnswer }, busy === "answer" ? "提交中…" : "提交回答"))) : h("div", { className: "kb-actionrow" },
+          h("button", { type: "button", className: "kb-btn kb-btn--primary kb-btn--sm", disabled: !!busy, onClick: doApprove }, busy === "approve" ? "批准中…" : "批准继续"))) : null;
 
       const deliveryNode = delivery ? h("div", { className: "kb-deliver" },
         h("div", { className: "kb-rechead" }, h(Icon, { name: "flag", size: 13 }), h("b", null, "交付物")),
@@ -1716,6 +1820,7 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
       if (canCreatePr && card.status === "awaiting_signoff") deliverActions.push(h("button", { key: "pr", type: "button", className: "kb-btn kb-btn--ghost kb-btn--sm", disabled: !!busy, onClick: doCreatePr }, busy === "create_pr" ? "创建中…" : "补建 PR"));
       if (canPatch) deliverActions.push(h("button", { key: "patch", type: "button", className: "kb-btn kb-btn--ghost kb-btn--sm", disabled: !!busy, onClick: doPatch }, busy === "patch" ? "导出中…" : "导出补丁"));
       if (canMerge) deliverActions.push(h("button", { key: "merge", type: "button", className: "kb-btn kb-btn--primary kb-btn--sm", disabled: !!busy, onClick: doMerge }, busy === "merge" ? "合并中…" : "一键合并"));
+      if (canCleanup) deliverActions.push(h("button", { key: "archive", type: "button", className: "kb-btn kb-btn--ghost kb-btn--sm", disabled: !!busy, onClick: doArchive }, busy === "archive" ? "归档中…" : "归档"));
       if (canCleanup) deliverActions.push(h("button", { key: "cleanup", type: "button", className: "kb-btn kb-btn--ghost kb-btn--sm", disabled: !!busy, onClick: doCleanup }, busy === "cleanup" ? "清理中…" : "清理工作树"));
 
       return h("aside", { ref: asideRef, tabIndex: -1, className: "kb-drawer", role: "dialog", "aria-modal": "true", "aria-label": title || "任务详情", "data-testid": "card-drawer" },

@@ -764,8 +764,7 @@ async function runTests(host) {
   });
 
   // 2. workspaces
-  await test('workspaces', async () => {
-    const r = await host.call('GET', '/workspaces');
+  await test('workspaces', async () => {    const r = await host.call('GET', '/workspaces');
     assertEqual(r.status, 200, 'GET /workspaces 状态码');
     assert(r.json && r.json.ok === true, 'workspaces ok:true');
     assert(Array.isArray(r.json.workspaces), 'workspaces 应为数组，实际 ' + shorten(r.json));
@@ -1238,6 +1237,31 @@ async function runTests(host) {
     await host.action(card.id, 'cancel');
   });
 
+  // 19b. 审批回环
+  await test('审批回环：request_approval → awaiting_approval → approve → running + followup', async () => {
+    host.autoTurnEnd = false;
+    const card = makeCard('需要批准任务');
+    await addCard(card);
+    const start = await host.start(card.id);
+    assert(start.json && start.json.ok === true, 'start 成功，实际 ' + shorten(start.text));
+    const running = await host.waitCardStatus(card.id, ['running', 'worktree_preparing', 'queued'], '审批用例进入执行');
+    const run = running.runs[running.runs.length - 1];
+    const rec = host.created.find((r) => r.agent && r.agent.id === run.sessionId);
+    assert(rec, '应有执行 agent');
+    await host.callTool(rec.agent, 'request_approval', { question: '是否允许删除数据库？' });
+    const pending = await host.waitCardStatus(card.id, ['awaiting_approval'], 'request_approval 后进入 awaiting_approval');
+    assert(pending.pending && pending.pending.kind === 'awaiting_approval', 'pending.kind 应为 awaiting_approval，实际 ' + shorten(pending.pending));
+    const before = rec.agent.followups.length;
+    const ap = await host.action(card.id, 'approve', { note: '允许' });
+    assertEqual(ap.status, 200, 'approve 状态码');
+    assert(ap.json && ap.json.ok === true, 'approve 应 ok:true，实际 ' + shorten(ap.text));
+    const resumed = await host.waitCardStatus(card.id, ['running'], 'approve 后恢复 running');
+    assertEqual(resumed.pending, null, 'approve 后 pending 应清空');
+    assert(rec.agent.followups.length > before, 'approve 应 followup 执行会话');
+    try { await host.action(card.id, 'cancel'); } catch (e) { }
+    host.autoTurnEnd = true;
+  });
+
   // 20. create_pr 无远程
   await test('create_pr 无远程：业务失败或降级 pr_pending，不崩', async () => {
     host.autoTurnEnd = true;
@@ -1510,6 +1534,63 @@ async function runTests(host) {
     return path.join(HOME, 'task-board', workspaceId + '.json');
   }
 
+  async function setBoardSettings(patch) {
+    const file = boardJsonPath();
+    const parsed = JSON.parse(await fs.readFile(file, 'utf8'));
+    parsed.settings = Object.assign({}, parsed.settings || {}, patch);
+    await fs.writeFile(file, JSON.stringify(parsed), 'utf8');
+  }
+
+  // 22b. 优先级调度
+  await test('调度：priority 参与执行队列排序（urgent 先于 low）', async () => {
+    const hold = makeCard('占位任务');
+    const lowCard = makeCard('低优先级任务', { priority: 'low' });
+    const urgentCard = makeCard('紧急任务', { priority: 'urgent' });
+    await addCard(hold); await addCard(lowCard); await addCard(urgentCard);
+    await setBoardSettings({ concurrency: 1, reviewConcurrency: 4 });
+    host.autoTurnEnd = false;
+    try {
+      await host.start(hold.id);
+      await host.waitCardStatus(hold.id, ['running'], '占位任务开始执行');
+      const lowStart = await host.start(lowCard.id);
+      const urgentStart = await host.start(urgentCard.id);
+      assert(lowStart.json && lowStart.json.ok && lowStart.json.result && lowStart.json.result.queued, '低优先级应排队，实际 ' + shorten(lowStart.text));
+      assert(urgentStart.json && urgentStart.json.ok && urgentStart.json.result && urgentStart.json.result.queued, '紧急任务应排队，实际 ' + shorten(urgentStart.text));
+      await host.action(hold.id, 'cancel');
+      await host.waitCardStatus(urgentCard.id, ['running'], '紧急任务应先启动');
+      const afterLow = await host.card(lowCard.id);
+      assertEqual(afterLow.status, 'queued', '低优先级应仍在排队（紧急任务优先）');
+    } finally {
+      host.autoTurnEnd = true;
+      try { await host.action(urgentCard.id, 'cancel'); } catch (e) { }
+      try { await host.action(lowCard.id, 'cancel'); } catch (e) { }
+      await setBoardSettings({ concurrency: 2, reviewConcurrency: 2 });
+    }
+  });
+
+  // 22c. 评审并发限制
+  await test('调度：reviewConcurrency 限制并发评审，超出排队', async () => {
+    const cardA = makeCard('评审并发A');
+    const cardB = makeCard('评审并发B');
+    await addCard(cardA); await addCard(cardB);
+    await setBoardSettings({ concurrency: 2, reviewConcurrency: 1 });
+    host.autoTurnEnd = true;
+    const base = host.reviewAgentRecords().length;
+    try {
+      await host.start(cardA.id);
+      await host.start(cardB.id);
+      await host.waitFor(() => host.reviewAgentRecords().length >= base + 1, '至少一个评审启动', 12000);
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      assertEqual(host.reviewAgentRecords().length, base + 1, 'reviewConcurrency=1 时并发评审数应为 1');
+      const firstReview = host.reviewAgentRecords()[base].agent;
+      await host.callTool(firstReview, 'review_verdict', { verdict: 'pass', mustFix: [], nits: [], evidence: ['评审通过（假）'] });
+      await host.waitFor(() => host.reviewAgentRecords().length >= base + 2, '首个评审结束后第二个才启动', 12000);
+    } finally {
+      try { await host.action(cardB.id, 'cancel'); } catch (e) { }
+      await setBoardSettings({ concurrency: 2, reviewConcurrency: 2 });
+    }
+  });
+
   // 23. /stats
   await test('/stats：返回统计形状（cards/review/tokens/runs/queue/health）与计数', async () => {
     const { board } = await host.getBoard();
@@ -1657,6 +1738,45 @@ async function runTests(host) {
     assertEqual(reviewRun.verifications[0].exitCode, 0, '持久化 verifications[0].exitCode');
   });
 
+  // 27b. Host 确定性机器验证
+  await test('Host 机器验证：task.verify 命令在评审前自动执行并计入证据', async () => {
+    const card = makeCard('Host 机器验证任务', { verify: ['git status'] });
+    const reviewAgent = await startToReview(card, 'Host 机器验证用例');
+    await host.waitFor(() => reviewAgent.followups.length > 0, 'Host 机器验证用例：评审 prompt', 8000);
+    const fetched = await host.card(card.id);
+    const reviewRun = [...(fetched.runs || [])].reverse().find((run) => run.kind === 'review');
+    assert(reviewRun && Array.isArray(reviewRun.verifications) && reviewRun.verifications.length >= 1,
+      'Host 应在评审 Run 记录 verify 的机器验证，实际 ' + shorten(reviewRun && reviewRun.verifications));
+    assertEqual(reviewRun.verifications[0].command, 'git status', 'Host 机器验证 command');
+    assertEqual(reviewRun.verifications[0].exitCode, 0, 'git status 应 exit 0');
+    const reviewPrompt = JSON.stringify(reviewAgent.followups[0] || {});
+    assert(reviewPrompt.includes('Host 机器验证'), '评审 prompt 应含 Host 机器验证，实际 ' + shorten(reviewAgent.followups[0]));
+    const worktreePath = await executeWorktree(card.id, 'Host 机器验证用例');
+    await host.commitInWorktree(worktreePath, 'src/host-verify.txt', 'ok\n');
+    await host.callTool(reviewAgent, 'review_verdict', { verdict: 'pass', mustFix: [], nits: [] });
+    const signed = await host.waitCardStatus(card.id, ['awaiting_signoff'], 'Host 验证通过后进入待签收');
+    const review = signed.reviews[signed.reviews.length - 1];
+    assert(review.verification && review.verification.ran === true, 'verification.ran 应 true，实际 ' + shorten(review.verification));
+    assertEqual(review.verification.passed, true, 'Host 机器验证通过后 verification.passed 应 true');
+  });
+
+  // 27c. 隐藏验收用例
+  await test('隐藏验收用例：settings.hiddenVerify 由 Host 在评审前执行并计入证据', async () => {
+    const card = makeCard('隐藏验收任务');
+    await addCard(card);
+    await setBoardSettings({ hiddenVerify: ['git status'] });
+    try {
+      await startToReview(card, '隐藏验收用例');
+      const fetched = await host.card(card.id);
+      const reviewRun = [...(fetched.runs || [])].reverse().find((run) => run.kind === 'review');
+      assert(reviewRun && Array.isArray(reviewRun.verifications) && reviewRun.verifications.some((v) => v.command === 'git status'),
+        'hiddenVerify 应被执行并记录，实际 ' + shorten(reviewRun && reviewRun.verifications));
+      try { await host.action(card.id, 'cancel'); } catch (e) { }
+    } finally {
+      await setBoardSettings({ hiddenVerify: [] });
+    }
+  });
+
   // 28. 验证失败门禁
   await test('验证失败门禁：机器验证 exit 1 + pass → blocked + verification.passed=false + 审计 review_verification_failed', async () => {
     const card = makeCard('验证失败任务');
@@ -1688,6 +1808,11 @@ async function runTests(host) {
     const reworking = await host.waitCardStatus(card.id, ['changes_requested', 'running'], 'mustFix 用例进入返工');
     assertEqual(reworking.round, 2, 'changes 后 round 应为 2，实际 ' + reworking.round);
     const secondReviewAgent = await host.nextReviewAgent(reviewsBefore, 'mustFix 用例：第二轮评审 agent');
+    await host.waitFor(() => secondReviewAgent.followups.length > 0, 'mustFix 用例：第二轮评审 prompt', 8000);
+    const secondPrompt = JSON.stringify(secondReviewAgent.followups[0] || {});
+    assert(secondPrompt.includes('执行方交接'), '第二轮评审 prompt 应含「执行方交接」，实际 ' + shorten(secondReviewAgent.followups[0]));
+    assert(secondPrompt.includes('上一轮评审'), '第二轮评审 prompt 应含上一轮评审要求，实际 ' + shorten(secondReviewAgent.followups[0]));
+    assert(secondPrompt.includes('补充回归用例'), '第二轮评审 prompt 应带上轮 mustFix 内容，实际 ' + shorten(secondReviewAgent.followups[0]));
     const reworkRun = [...reworking.runs].reverse().find((run) => run.kind === 'execute' && run.worktree && run.worktree.path);
     assert(reworkRun, 'mustFix 用例应有执行工作树');
     await host.commitInWorktree(reworkRun.worktree.path, 'src/mustfix-fix.txt', 'fixed\n');
@@ -1743,6 +1868,105 @@ async function runTests(host) {
     }
   });
 
+  // 31b. 任务级预算熔断
+  await test('预算熔断：任务总耗时超 maxMinutesPerTask → blocked + 审计 budget_blocked', async () => {
+    const card = makeCard('预算熔断任务');
+    const reviewAgent = await startToReview(card, '预算熔断用例');
+    const worktreePath = await executeWorktree(card.id, '预算熔断用例');
+    await host.commitInWorktree(worktreePath, 'src/budget.txt', 'budget\n');
+    const file = boardJsonPath();
+    const parsed = JSON.parse(await fs.readFile(file, 'utf8'));
+    parsed.settings.maxMinutesPerTask = 1;
+    const target = parsed.cards.find((c) => c.id === card.id);
+    const execRun = (target.runs || []).find((run) => run.kind === 'execute');
+    if (execRun) execRun.startedAt = '2000-01-01T00:00:00.000Z';
+    await fs.writeFile(file, JSON.stringify(parsed), 'utf8');
+    await host.callTool(reviewAgent, 'review_verdict', { verdict: 'pass', mustFix: [], nits: [], evidence: ['评审通过（假）'] });
+    const blocked = await host.waitCardStatus(card.id, ['blocked'], '超时后熔断为 blocked');
+    assert(String(blocked.error || '').includes('总耗时') || String(blocked.error || '').includes('token'), 'error 应含预算超限，实际 ' + shorten(blocked.error));
+    const audit = await host.auditLines();
+    assert(audit.some((line) => line && line.taskId === card.id && line.action === 'budget_blocked'), '审计应含 budget_blocked');
+    await setBoardSettings({ maxMinutesPerTask: 60 });
+  });
+
+  // 31c. 看板设置接口
+  await test('看板设置：POST /settings 更新 settings 并审计（含 CAS 冲突）', async () => {
+    const { board } = await host.getBoard();
+    const r = await host.call('POST', '/settings', { workspaceId: WS, expectedRevision: board.revision, settings: { concurrency: 3, reviewConcurrency: 1, maxRounds: 4 } });
+    assertEqual(r.status, 200, '/settings HTTP 200');
+    assert(r.json && r.json.ok === true, '/settings 应 ok:true，实际 ' + shorten(r.text));
+    assertEqual(r.json.board.settings.concurrency, 3, 'concurrency 应更新为 3');
+    assertEqual(r.json.board.settings.reviewConcurrency, 1, 'reviewConcurrency 应更新为 1');
+    assertEqual(r.json.board.settings.maxRounds, 4, 'maxRounds 应更新为 4');
+    const audit = await host.auditLines();
+    assert(audit.some((line) => line && line.action === 'settings'), '审计应含 settings');
+    const r2 = await host.call('POST', '/settings', { workspaceId: WS, expectedRevision: 0, settings: { concurrency: 2 } });
+    assertEqual(r2.json && r2.json.code, 'revision_conflict', '过期 revision 应 revision_conflict');
+    await setBoardSettings({ concurrency: 2, reviewConcurrency: 2, maxRounds: 3 });
+  });
+
+  // 31d. 卡片 DAG（blockedBy）
+  await test('卡片 DAG：blockedBy 未完成时 start 返回 blocked_by_dependency，完成后可启动', async () => {
+    const dep = makeCard('依赖前置');
+    const main = makeCard('依赖后置', { blockedBy: [dep.id] });
+    await addCard(dep); await addCard(main);
+    const r1 = await host.start(main.id);
+    assertEqual(r1.status, 200, 'start HTTP 200');
+    assert(r1.json && r1.json.ok === false && r1.json.code === 'blocked_by_dependency', '未满足依赖应被拦截，实际 ' + shorten(r1.text));
+    const file = boardJsonPath();
+    const parsed = JSON.parse(await fs.readFile(file, 'utf8'));
+    const depCard = parsed.cards.find((c) => c.id === dep.id);
+    depCard.status = 'done';
+    depCard.updatedAt = '2000-01-01T00:00:00.000Z';
+    await fs.writeFile(file, JSON.stringify(parsed), 'utf8');
+    const r2 = await host.start(main.id);
+    assert(r2.json && r2.json.ok === true, '依赖完成后应可启动，实际 ' + shorten(r2.text));
+    try { await host.action(main.id, 'cancel'); } catch (e) { }
+  });
+
+  // 31e. SSE
+  await test('SSE：GET /events?once=1 推送 board 事件后关闭', async () => {
+    const r = await host.call('GET', '/events?workspaceId=' + encodeURIComponent(WS) + '&once=1');
+    assertEqual(r.status, 200, '/events HTTP 200');
+    assert(String(r.text || '').indexOf('event: board') >= 0, '/events 应推送 board 事件，实际 ' + shorten(r.text));
+  });
+
+  // 31f. 归档
+  await test('归档：done 任务 archive 后出板并写入归档文件', async () => {
+    const card = makeCard('归档任务');
+    await addCard(card);
+    const file = boardJsonPath();
+    const parsed = JSON.parse(await fs.readFile(file, 'utf8'));
+    const target = parsed.cards.find((c) => c.id === card.id);
+    target.status = 'done';
+    target.updatedAt = '2000-01-01T00:00:00.000Z';
+    await fs.writeFile(file, JSON.stringify(parsed), 'utf8');
+    const r = await host.action(card.id, 'archive');
+    assertEqual(r.status, 200, 'archive HTTP 200');
+    assert(r.json && r.json.ok === true, 'archive 应 ok:true，实际 ' + shorten(r.text));
+    const after = await host.getBoard();
+    assert(!after.board.cards.some((c) => c.id === card.id), '归档后卡片应出板');
+    const archivePath = path.join(HOME, 'task-board', WS + '.archive.json');
+    const arch = JSON.parse(await fs.readFile(archivePath, 'utf8'));
+    assert(Array.isArray(arch) && arch.some((x) => x.task && x.task.id === card.id), '归档文件应含该卡');
+  });
+
+  // 31g. 鉴权 token
+  await test('鉴权：设置 authToken 后变更接口无 token 返回 401，带 token 通过', async () => {
+    const card = makeCard('鉴权任务');
+    await addCard(card);
+    await setBoardSettings({ authToken: 'secret-token' });
+    try {
+      const noTok = await host.call('POST', '/action', { workspaceId: WS, taskId: card.id, action: 'cancel' });
+      assertEqual(noTok.status, 401, '无 token 应 401，实际 ' + noTok.status);
+      assert(noTok.json && noTok.json.code === 'unauthorized', 'code 应为 unauthorized，实际 ' + shorten(noTok.text));
+      const withTok = await host.call('POST', '/action?token=secret-token', { workspaceId: WS, taskId: card.id, action: 'cancel' });
+      assertEqual(withTok.status, 200, '带 token 应 200，实际 ' + withTok.status);
+    } finally {
+      await setBoardSettings({ authToken: '' });
+    }
+  });
+
   // 32. 坏板备份
   await test('坏板备份：非法 JSON → GET /board 返回 null 且生成 *.corrupt-*.bak', async () => {
     const boardPath = boardJsonPath();
@@ -1763,6 +1987,29 @@ async function runTests(host) {
     } finally {
       await fs.writeFile(boardPath, original, 'utf8');
     }
+  });
+
+  // 33. 重启续跑
+  await test('重启续跑：/reconcile 把遗留 queued 任务重新调度（不再直接 blocked）', async () => {
+    const snapshot = await host.getBoard();
+    const live = ['queued', 'worktree_preparing', 'running', 'needs_input', 'awaiting_approval', 'changes_requested', 'awaiting_review', 'reviewing', 'finalizing'];
+    for (const existing of snapshot.board.cards) {
+      if (live.includes(existing.status)) { try { await host.action(existing.id, 'cancel'); } catch (e) { } }
+    }
+    const card = makeCard('重启续跑任务');
+    await addCard(card);
+    const file = boardJsonPath();
+    const parsed = JSON.parse(await fs.readFile(file, 'utf8'));
+    const target = parsed.cards.find((c) => c.id === card.id);
+    target.status = 'queued';
+    target.updatedAt = '2000-01-01T00:00:00.000Z';
+    await fs.writeFile(file, JSON.stringify(parsed), 'utf8');
+    const r = await host.call('POST', '/reconcile', { workspaceId: WS });
+    assertEqual(r.status, 200, '/reconcile HTTP 200');
+    assert(r.json && r.json.ok === true, '/reconcile 应 ok:true，实际 ' + shorten(r.text));
+    const started = await host.waitCardStatus(card.id, ['running', 'worktree_preparing', 'awaiting_review', 'reviewing'], 'reconcile 后任务应被重新调度');
+    assert(['running', 'worktree_preparing', 'awaiting_review', 'reviewing'].includes(started.status), 'reconcile 后任务应推进，实际 ' + started.status);
+    try { await host.action(card.id, 'cancel'); } catch (e) { }
   });
 
   // ---- 汇总 ----

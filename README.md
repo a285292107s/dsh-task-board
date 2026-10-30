@@ -145,7 +145,7 @@ dsh plugin --profile web remove dsh-task-board
 
 ```bash
 npm run check   # node --check index.js + node --check client.js
-npm test        # 假宿主回归，38 项（tests/fake-host.mjs）
+npm test        # 假宿主回归，50 项（tests/fake-host.mjs）
 ```
 
 GitHub Actions（`.github/workflows/verify.yml`）在 push / PR 到 `main` 时跑同样三步；测试不需要

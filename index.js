@@ -24,14 +24,30 @@ const AUDIT_MAX_LIMIT = 500;
 
 const DEFAULT_SETTINGS = {
   concurrency: 2,
+  reviewConcurrency: 2,
   maxRounds: 3,
   maxMinutesPerRun: 20,
   maxMinutesPerTask: 60,
+  maxTokensPerTask: 600000,
+  hiddenVerify: [],
+  authToken: '',
   prMode: 'auto',
   pushConsent: 'first',
   localSignoffMerge: false,
   patchExport: true,
 };
+
+const PRIORITY_RANK = { urgent: 0, high: 1, medium: 2, low: 3, none: 4 };
+
+function pickNextIndex(queue) {
+  let best = 0;
+  for (let i = 1; i < queue.length; i += 1) {
+    const rank = PRIORITY_RANK[queue[i] && queue[i].priority] ?? 4;
+    const bestRank = PRIORITY_RANK[queue[best] && queue[best].priority] ?? 4;
+    if (rank < bestRank) best = i;
+  }
+  return best;
+}
 
 const LIVE_STATUS = new Set([
   'queued', 'worktree_preparing', 'running', 'needs_input', 'awaiting_approval',
@@ -64,6 +80,8 @@ const TRANSITIONS = {
   pr_pending: { finalizing: 'pr_pending' },
   finalize_failed: { finalizing: 'finalize_failed' },
   input: { running: 'needs_input', reviewing: 'needs_input' },
+  approval: { running: 'awaiting_approval', reviewing: 'awaiting_approval' },
+  approve: { awaiting_approval: 'running' },
   answer: { needs_input: 'running' },
   cancel: {
     queued: 'cancelled', worktree_preparing: 'cancelled', running: 'cancelled',
@@ -83,7 +101,7 @@ const TRANSITIONS = {
   retry: { blocked: 'queued', failed: 'queued', cancelled: 'queued' },
 };
 
-const CLIENT_FIELDS = ['title', 'description', 'acceptance', 'labels', 'priority', 'due', 'executor', 'reviewer', 'budget', 'base'];
+const CLIENT_FIELDS = ['title', 'description', 'acceptance', 'labels', 'priority', 'due', 'executor', 'reviewer', 'budget', 'base', 'verify', 'blockedBy'];
 const HOST_FIELDS = ['status', 'round', 'error', 'runs', 'reviews', 'delivery', 'pr', 'pending', 'signoff', 'updatedAt'];
 
 function newId() {
@@ -247,6 +265,24 @@ function auditFile(workspaceId) {
   return path.join(dataDir(), safeId(workspaceId) + '.audit.jsonl');
 }
 
+function archiveFile(workspaceId) {
+  return path.join(dataDir(), safeId(workspaceId) + '.archive.json');
+}
+
+async function appendArchive(workspaceId, task) {
+  const file = archiveFile(workspaceId);
+  let list = [];
+  try {
+    const parsed = JSON.parse(await fs.readFile(file, 'utf8'));
+    list = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed.cards) ? parsed.cards : []);
+  } catch (e) { list = []; }
+  list.push({ archivedAt: isoNow(), task });
+  await fs.mkdir(dataDir(), { recursive: true });
+  const tmp = file + '.' + process.pid + '.' + Date.now() + '.tmp';
+  await fs.writeFile(tmp, JSON.stringify(list), 'utf8');
+  await fs.rename(tmp, file);
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -400,7 +436,31 @@ function buildExecutePrompt(task) {
   return buildPrompt(task) + '\n完成后请把改动提交到当前分支，然后必须调用 submit_for_review 工具提交评审（summary 写明改了什么、如何验证；evidence 可选列出验证命令或结果）。不要自行宣布完成。';
 }
 
-function buildReviewPrompt(task, diff) {
+function renderEvidenceLines(evidence) {
+  return normalizeEvidence(evidence, 10).map((item) => (item.type === 'verification'
+    ? '- 验证：' + item.command + '（exit ' + item.exitCode + '）' + (item.summary ? '：' + item.summary : '')
+    : '- 记录：' + item.text));
+}
+
+function buildReviewHandoff(task, execRun, hostVerifications) {
+  const execution = {
+    summary: asText(execRun && execRun.summary, 2000),
+    evidence: execRun && Array.isArray(execRun.evidence) ? execRun.evidence : [],
+  };
+  let previous = null;
+  if (task && Array.isArray(task.reviews)) {
+    for (let i = task.reviews.length - 1; i >= 0; i -= 1) {
+      const review = task.reviews[i];
+      if (review && review.verdict === 'changes') {
+        previous = { round: review.round, mustFix: Array.isArray(review.mustFix) ? review.mustFix : [] };
+        break;
+      }
+    }
+  }
+  return { execution, previous, verification: Array.isArray(hostVerifications) ? hostVerifications : [] };
+}
+
+function buildReviewPrompt(task, diff, handoff) {
   const lines = [
     '你是一名独立评审代理。你只能读取文件、检索代码、运行白名单内的验证命令，不能修改任何文件。',
     '任务：' + (task.title || '(未命名任务)'),
@@ -411,6 +471,31 @@ function buildReviewPrompt(task, diff) {
   lines.push(diff.stat || '(无已提交差异)');
   lines.push('变更内容（超过 40KB 已截断）：');
   lines.push(diff.text || '(无已提交差异)');
+  const execution = handoff && handoff.execution ? handoff.execution : null;
+  if (execution) {
+    lines.push('执行方交接（本轮）：' + (execution.summary || '（执行方未提供摘要）'));
+    const evidenceLines = renderEvidenceLines(execution.evidence);
+    if (evidenceLines.length) {
+      lines.push('执行方声明的证据：');
+      evidenceLines.forEach((line) => lines.push(line));
+    }
+  }
+  const hostVerification = handoff && Array.isArray(handoff.verification) ? handoff.verification : [];
+  if (hostVerification.length) {
+    lines.push('Host 机器验证（自动执行，权威结论）：');
+    hostVerification.forEach((item) => lines.push('- ' + item.command + ' → exit ' + item.exitCode + (item.summary ? '：' + item.summary : '')));
+    if (hostVerification.some((item) => Number(item.exitCode) !== 0)) {
+      lines.push('注意：存在非 0 退出码的机器验证，通过前必须处理。');
+    }
+  }
+  const previous = handoff && handoff.previous ? handoff.previous : null;
+  if (previous && Array.isArray(previous.mustFix) && previous.mustFix.length) {
+    lines.push('上一轮评审（第 ' + (previous.round || '?') + ' 轮）要求修复的项，请逐条确认是否已落实；未落实的重新列为 mustFix：');
+    previous.mustFix.slice(0, 20).forEach((item, index) => {
+      const where = item.file ? item.file + (item.line ? ':' + item.line : '') : '未指明位置';
+      lines.push((index + 1) + '. [' + (item.severity || 'major') + '] ' + where + ' ' + (item.issue || '') + (item.status === 'closed' ? '（已关闭）' : '（未关闭）') + (item.suggestion ? '（建议：' + item.suggestion + '）' : ''));
+    });
+  }
   lines.push('请对照验收标准检查改动，实际运行可用的验证命令（npm test / npm run build / npm run lint / git diff 等），逐条确认验收项。');
   lines.push('给出结论前必须实际运行验证，并在 evidence 中列出证据（命令与结果）；没有任何证据的 pass 会被拒绝。');
   lines.push('最后必须调用 review_verdict 工具给出结论：通过用 pass；不通过用 changes，并在 mustFix 中按 file/line/severity/issue/suggestion 列出必须修复项。不要只回复文字。');
@@ -496,9 +581,13 @@ function normalizeSettings(raw) {
   const source = raw && typeof raw === 'object' ? raw : {};
   return {
     concurrency: clampInt(source.concurrency, 1, 8, DEFAULT_SETTINGS.concurrency),
+    reviewConcurrency: clampInt(source.reviewConcurrency, 1, 8, DEFAULT_SETTINGS.reviewConcurrency),
     maxRounds: clampInt(source.maxRounds, 1, 8, DEFAULT_SETTINGS.maxRounds),
     maxMinutesPerRun: clampInt(source.maxMinutesPerRun, 1, 120, DEFAULT_SETTINGS.maxMinutesPerRun),
     maxMinutesPerTask: clampInt(source.maxMinutesPerTask, 1, 480, DEFAULT_SETTINGS.maxMinutesPerTask),
+    maxTokensPerTask: clampInt(source.maxTokensPerTask, 1000, 6000000, DEFAULT_SETTINGS.maxTokensPerTask),
+    hiddenVerify: Array.isArray(source.hiddenVerify) ? source.hiddenVerify.slice(0, VERIFY_RECORD_MAX).map((cmd) => asText(cmd, 1000).trim()).filter(Boolean) : [],
+    authToken: asText(source.authToken, 200).trim(),
     prMode: ['auto', 'local', 'manual'].includes(source.prMode) ? source.prMode : DEFAULT_SETTINGS.prMode,
     pushConsent: ['first', 'always', 'never'].includes(source.pushConsent) ? source.pushConsent : DEFAULT_SETTINGS.pushConsent,
     localSignoffMerge: source.localSignoffMerge === true,
@@ -523,6 +612,13 @@ function normalizeBase(raw) {
     commit: source.commit ? String(source.commit) : null,
     ignoreDirty: source.ignoreDirty === true,
   };
+}
+
+function normalizeVerify(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, VERIFY_RECORD_MAX)
+    .map((item) => asText(typeof item === 'string' ? item : (item && item.command), 1000).trim())
+    .filter(Boolean);
 }
 
 function normalizeRun(raw) {
@@ -595,6 +691,8 @@ function normalizeTask(raw) {
     reviewer: asText(source.reviewer, 120),
     budget: normalizeBudget(source.budget),
     base: normalizeBase(source.base),
+    verify: normalizeVerify(source.verify),
+    blockedBy: Array.isArray(source.blockedBy) ? source.blockedBy.slice(0, 50).map((id) => String(id)).filter(Boolean) : [],
     status: VALID_STATUS.has(source.status) ? source.status : 'todo',
     round: Math.max(0, asInt(source.round, 0)),
     error: source.error ? String(source.error) : null,
@@ -922,6 +1020,8 @@ function mergeIncomingBoard(oldBoard, incoming) {
     const previous = oldById.get(id);
     const merged = { id };
     CLIENT_FIELDS.forEach((field) => { merged[field] = raw[field]; });
+    if (raw.verify === undefined && previous) merged.verify = previous.verify;
+    if (raw.blockedBy === undefined && previous) merged.blockedBy = previous.blockedBy;
     if (previous) {
       HOST_FIELDS.forEach((field) => { merged[field] = previous[field]; });
     } else {
@@ -985,6 +1085,9 @@ export function apply(ctx) {
   const queues = new Map();
   const startingKeys = new Set();
   const pumping = new Set();
+  const reviewQueues = new Map();
+  const startingReviews = new Set();
+  const pumpingReviews = new Set();
   const boardLocks = new Map();
   const bootAt = Date.now();
 
@@ -1202,10 +1305,41 @@ export function apply(ctx) {
     return count;
   }
 
-  function canStartExecution(workspaceId, settings) {
+  function canStartExecution(workspaceId, settings, excludeKey) {
     const limit = settings && settings.concurrency ? settings.concurrency : DEFAULT_SETTINGS.concurrency;
-    const startingHere = [...startingKeys].filter((key) => key.startsWith(workspaceId + '::')).length;
+    const startingHere = [...startingKeys].filter((key) => key.startsWith(workspaceId + '::') && key !== excludeKey).length;
     return activeExecutionCount(workspaceId) + startingHere < limit && globalActiveCount() < GLOBAL_RUN_CAP;
+  }
+
+  function activeReviewCount(workspaceId) {
+    return activeEntries(workspaceId, 'review').filter((entry) => entry.phase === 'reviewing' || entry.phase === 'input').length;
+  }
+
+  function taskTotalTokens(task) {
+    return (task && Array.isArray(task.runs) ? task.runs : [])
+      .reduce((sum, run) => sum + Math.max(0, asInt(run && run.tokens, 0)), 0);
+  }
+
+  function taskElapsedMs(task) {
+    const first = (task && Array.isArray(task.runs) ? task.runs : [])
+      .find((run) => run && run.kind === 'execute' && run.startedAt);
+    if (!first) return 0;
+    const start = Date.parse(first.startedAt);
+    return Number.isFinite(start) ? Math.max(0, Date.now() - start) : 0;
+  }
+
+  function budgetBreach(task, settings) {
+    const maxTokens = settings && settings.maxTokensPerTask ? settings.maxTokensPerTask : DEFAULT_SETTINGS.maxTokensPerTask;
+    if (maxTokens && taskTotalTokens(task) >= maxTokens) return '任务累计 token 超过上限（' + maxTokens + '），已中止';
+    const maxMinutes = settings && settings.maxMinutesPerTask ? settings.maxMinutesPerTask : DEFAULT_SETTINGS.maxMinutesPerTask;
+    if (maxMinutes && taskElapsedMs(task) >= maxMinutes * 60000) return '任务总耗时超过上限（' + maxMinutes + ' 分钟），已中止';
+    return null;
+  }
+
+  function canStartReview(workspaceId, settings) {
+    const limit = settings && settings.reviewConcurrency ? settings.reviewConcurrency : DEFAULT_SETTINGS.reviewConcurrency;
+    const startingHere = [...startingReviews].filter((key) => key.startsWith(workspaceId + '::')).length;
+    return activeReviewCount(workspaceId) + startingHere < limit && globalActiveCount() < GLOBAL_RUN_CAP;
   }
 
   function findEntry(workspaceId, taskId, kind) {
@@ -1277,7 +1411,7 @@ export function apply(ctx) {
           const startingHere = [...startingKeys].filter((key) => key.startsWith(workspaceId + '::')).length;
           if (activeExecutionCount(workspaceId) + startingHere >= limit) return;
           if (globalActiveCount() >= GLOBAL_RUN_CAP) return;
-          const next = pending.shift();
+          const next = pending.splice(pickNextIndex(pending), 1)[0];
           if (!next) return;
           const key = keyOf(workspaceId, next.taskId) + '::execute';
           startingKeys.add(key);
@@ -1294,8 +1428,71 @@ export function apply(ctx) {
     })();
   }
 
-  function modelRoute(task, kind) {
-    const raw = kind === 'review' ? (task.reviewer || task.executor) : task.executor;
+  function pumpReviewQueue(workspaceId) {
+    if (pumpingReviews.has(workspaceId)) return Promise.resolve();
+    pumpingReviews.add(workspaceId);
+    return (async () => {
+      try {
+        for (;;) {
+          const queue = reviewQueues.get(workspaceId);
+          if (!queue || !queue.length) return;
+          const board = await ensureBoard(workspaceId);
+          if (!canStartReview(workspaceId, board.settings)) return;
+          const next = queue.splice(pickNextIndex(queue), 1)[0];
+          if (!next) return;
+          const key = keyOf(workspaceId, next.taskId) + '::review';
+          startingReviews.add(key);
+          startReview(workspaceId, next.taskId, null)
+            .catch((error) => logError('queued review failed', String((error && error.message) || error)))
+            .finally(() => {
+              startingReviews.delete(key);
+              pumpReviewQueue(workspaceId).catch(() => undefined);
+            });
+        }
+      } finally {
+        pumpingReviews.delete(workspaceId);
+      }
+    })();
+  }
+
+  async function scheduleReview(workspaceId, taskId) {
+    const board = await ensureBoard(workspaceId);
+    const task = findTask(board, taskId);
+    if (!task) return;
+    if (canStartReview(workspaceId, board.settings)) {
+      const key = keyOf(workspaceId, taskId) + '::review';
+      startingReviews.add(key);
+      startReview(workspaceId, taskId, null)
+        .catch((error) => logError('start review failed', String((error && error.message) || error)))
+        .finally(() => {
+          startingReviews.delete(key);
+          pumpReviewQueue(workspaceId).catch(() => undefined);
+        });
+      return;
+    }
+    const queue = reviewQueues.get(workspaceId) || [];
+    if (queue.some((item) => item.taskId === taskId)) return;
+    queue.push({ taskId, priority: task.priority || 'none' });
+    reviewQueues.set(workspaceId, queue);
+  }
+
+  function requestToken(req, url) {
+    try {
+      const headers = (req && req.headers) || {};
+      const header = headers['x-task-board-token'] || headers['X-Task-Board-Token'];
+      if (header) return String(header);
+    } catch (e) { }
+    return url && typeof url.searchParams.get === 'function' ? (url.searchParams.get('token') || '') : '';
+  }
+
+  async function authGuard(workspaceId, req, url) {
+    const board = await ensureBoard(workspaceId);
+    const need = board && board.settings && board.settings.authToken ? String(board.settings.authToken) : '';
+    if (!need) return true;
+    return requestToken(req, url) === need;
+  }
+
+  function modelRoute(task, kind) {    const raw = kind === 'review' ? (task.reviewer || task.executor) : task.executor;
     const text = String(raw || '').trim();
     if (!text) return {};
     const slash = text.indexOf('/');
@@ -1396,6 +1593,27 @@ export function apply(ctx) {
           catch (error) { logWarn('request_input 处理失败', String((error && error.message) || error)); }
           conclude(exec);
           return { ok: true, message: '已请求人工输入' };
+        },
+      });
+      tools.register({
+        name: 'request_approval',
+        description: '遇到需要人批准才能继续的高风险动作时调用，会暂停任务等待人工批准。',
+        parameters: {
+          type: 'object',
+          properties: { question: { type: 'string', description: '要向人说明并请求批准的事项' } },
+          required: ['question'],
+          additionalProperties: false,
+        },
+        output: {
+          schema: { type: 'object', properties: { ok: { type: 'boolean' }, message: { type: 'string' } }, required: ['ok'] },
+          render: (args, value) => [{ type: 'text', text: value && value.message ? value.message : '已请求批准' }],
+        },
+        async execute(args, exec) {
+          const entry = holder.entry;
+          try { if (entry) await requestApproval(entry, asText(args && args.question, 2000) || '请求人工批准'); }
+          catch (error) { logWarn('request_approval 处理失败', String((error && error.message) || error)); }
+          conclude(exec);
+          return { ok: true, message: '已请求人工批准' };
         },
       });
       holder.toolsReady = true;
@@ -1527,6 +1745,27 @@ export function apply(ctx) {
           return result;
         },
       });
+      tools.register({
+        name: 'request_approval',
+        description: '遇到需要人批准才能继续的高风险动作时调用，会暂停评审等待人工批准。',
+        parameters: {
+          type: 'object',
+          properties: { question: { type: 'string', description: '要向人说明并请求批准的事项' } },
+          required: ['question'],
+          additionalProperties: false,
+        },
+        output: {
+          schema: { type: 'object', properties: { ok: { type: 'boolean' }, message: { type: 'string' } }, required: ['ok'] },
+          render: (args, value) => [{ type: 'text', text: value && value.message ? value.message : '已请求批准' }],
+        },
+        async execute(args, exec) {
+          const entry = holder.entry;
+          try { if (entry) await requestApproval(entry, asText(args && args.question, 2000) || '请求人工批准'); }
+          catch (error) { logWarn('request_approval 处理失败', String((error && error.message) || error)); }
+          conclude(exec);
+          return { ok: true, message: '已请求人工批准' };
+        },
+      });
       try { tools.restrict({ allow: ['read', 'glob', 'grep', 'bash'] }); }
       catch (error) { logWarn('评审工具限制失败，已降级', String((error && error.message) || error)); }
       try {
@@ -1600,6 +1839,14 @@ export function apply(ctx) {
         run.evidence = mergeEvidence(evidence, entry.verifications);
         run.tokens = readTokens(entry) || run.tokens;
       }
+      const breach = budgetBreach(task, board.settings);
+      if (breach) {
+        task.status = 'blocked';
+        task.error = breach;
+        task.updatedAt = isoNow();
+        await saveBoard(workspaceId, board, auditEntry('host', 'budget_blocked', task, 'running', 'blocked', { runId: entry.runId, reason: breach }));
+        return { ok: false, breach: true };
+      }
       const from = task.status;
       const to = confirmTransition('submit', from);
       if (!to) return { ok: false };
@@ -1609,9 +1856,27 @@ export function apply(ctx) {
       await saveBoard(workspaceId, board, auditEntry('agent:' + entry.sessionId, 'submit', task, from, to, { runId: entry.runId }));
       return { ok: true };
     });
-    if (!result.ok) return;
+    if (!result.ok) { if (result.breach) releaseEntry(entry, false); return; }
     pumpQueue(workspaceId);
-    startReview(workspaceId, entry.taskId, entry).catch((error) => logError('start review failed', String((error && error.message) || error)));
+    scheduleReview(workspaceId, entry.taskId).catch((error) => logError('schedule review failed', String((error && error.message) || error)));
+  }
+
+  async function runHostVerifications(task, settings, cwd) {
+    const taskCommands = Array.isArray(task && task.verify) ? task.verify : [];
+    const hiddenCommands = settings && Array.isArray(settings.hiddenVerify) ? settings.hiddenVerify : [];
+    const commands = taskCommands.concat(hiddenCommands).slice(0, VERIFY_RECORD_MAX);
+    const out = [];
+    for (const command of commands) {
+      const result = await runVerification(command, cwd);
+      out.push({
+        command,
+        exitCode: result.exitCode,
+        at: isoNow(),
+        summary: asText(String(result.stdout || '') + (result.stderr ? '\n' + result.stderr : ''), EVIDENCE_TEXT_MAX).trim(),
+        hash: hashText(String(result.stdout || '') + '\n' + String(result.stderr || '')),
+      });
+    }
+    return out;
   }
 
   async function startReview(workspaceId, taskId, executeEntry) {
@@ -1649,6 +1914,10 @@ export function apply(ctx) {
       stat: diff.stat,
       text: diff.diff.length > MAX_DIFF_PROMPT ? diff.diff.slice(0, MAX_DIFF_PROMPT) + '\n…（已截断）' : diff.diff,
     };
+    const execRun = (task.runs || []).find((run) => run.id === (executeEntry && executeEntry.runId))
+      || [...(task.runs || [])].reverse().find((run) => run.kind === 'execute');
+    const hostVerifications = await runHostVerifications(task, board.settings, worktree.path);
+    const handoff = buildReviewHandoff(task, execRun, hostVerifications);
     const holder = { entry: null, toolsReady: false };
     const created = await createSession(task, 'review', worktree.path, (agentCtx, reviewAgent) => registerReviewTools(agentCtx, reviewAgent, holder));
     if (!created.ok) {
@@ -1661,6 +1930,7 @@ export function apply(ctx) {
       timer: null, startedAt: Date.now(), worktree, worktreePath: worktree.path,
       model: task.reviewer || task.executor || '', settled: false, toolsReady: holder.toolsReady,
       prCapture: null, limitMinutes: REVIEW_LIMIT_MINUTES,
+      verifications: hostVerifications.slice(),
     };
     holder.entry = entry;
     adoptEntry(entry);
@@ -1671,12 +1941,13 @@ export function apply(ctx) {
       if (!target || target.status !== 'reviewing' || !run) { aborted = true; return; }
       run.sessionId = created.sessionId;
       run.model = entry.model;
+      if (hostVerifications.length) run.verifications = hostVerifications.slice();
       target.updatedAt = isoNow();
       await saveBoard(workspaceId, current, null);
     });
     if (aborted) { releaseEntry(entry, true); return; }
     armTimer(entry, REVIEW_LIMIT_MINUTES);
-    driveTurn(entry, userMessage(buildReviewPrompt(task, promptDiff)));
+    driveTurn(entry, userMessage(buildReviewPrompt(task, promptDiff, handoff)));
   }
 
   async function failReviewStart(workspaceId, taskId, runId, message) {
@@ -1698,6 +1969,7 @@ export function apply(ctx) {
     });
     releaseTask(workspaceId, taskId, null);
     pumpQueue(workspaceId);
+    pumpReviewQueue(workspaceId).catch(() => undefined);
   }
 
   async function handleVerdict(entry, verdict, mustFix, nits, rawEvidence) {
@@ -1723,6 +1995,16 @@ export function apply(ctx) {
         run.status = 'done';
         run.endedAt = isoNow();
         run.tokens = readTokens(entry) || run.tokens;
+      }
+      const breach = budgetBreach(task, board.settings);
+      if (breach) {
+        if (run) { run.status = 'failed'; run.error = breach; }
+        task.status = 'blocked';
+        task.error = breach;
+        task.updatedAt = isoNow();
+        await saveBoard(workspaceId, board, auditEntry('host', 'budget_blocked', task, 'reviewing', 'blocked', { runId: entry.runId, reason: breach }));
+        decision = 'blocked';
+        return;
       }
       const passProblem = verdict === 'pass'
         ? (evidence.length === 0
@@ -1792,6 +2074,7 @@ export function apply(ctx) {
     });
     releaseEntry(entry, true);
     pumpQueue(workspaceId);
+    pumpReviewQueue(workspaceId).catch(() => undefined);
     if (decision === 'finalize') {
       await finalizeTask(workspaceId, taskId);
       return;
@@ -1989,6 +2272,7 @@ export function apply(ctx) {
     });
     releaseEntry(entry, true);
     pumpQueue(workspaceId);
+    pumpReviewQueue(workspaceId).catch(() => undefined);
   }
 
   async function blockTask(workspaceId, taskId, message, runId) {
@@ -2012,6 +2296,7 @@ export function apply(ctx) {
     });
     releaseTask(workspaceId, taskId, null);
     pumpQueue(workspaceId);
+    pumpReviewQueue(workspaceId).catch(() => undefined);
   }
 
   async function markStartFailure(workspaceId, taskId, status, code, message, runId) {
@@ -2034,6 +2319,7 @@ export function apply(ctx) {
     });
     releaseTask(workspaceId, taskId, null);
     pumpQueue(workspaceId);
+    pumpReviewQueue(workspaceId).catch(() => undefined);
     const board = await ensureBoard(workspaceId);
     return { ok: false, code, error: message, board };
   }
@@ -2056,6 +2342,16 @@ export function apply(ctx) {
     if (!String(task.acceptance || '').trim()) {
       return { ok: false, code: 'missing_acceptance', error: '请先填写验收标准再开始执行', board };
     }
+    const blockers = Array.isArray(task.blockedBy) ? task.blockedBy : [];
+    if (blockers.length) {
+      const unmet = blockers.filter((id) => {
+        const dep = findTask(board, id);
+        return !dep || dep.status !== 'done';
+      });
+      if (unmet.length) {
+        return { ok: false, code: 'blocked_by_dependency', error: '存在未完成的依赖任务：' + unmet.join('、'), board };
+      }
+    }
     const workspace = findWorkspace(workspaceId);
     if (!workspace || !workspace.path) {
       return markStartFailure(workspaceId, taskId, 'failed', 'worktree_failed', '工作区未注册或路径缺失');
@@ -2076,10 +2372,10 @@ export function apply(ctx) {
     if (probe.dirty && !(task.base && task.base.ignoreDirty)) {
       return markStartFailure(workspaceId, taskId, 'failed', 'dirty', '工作区有未提交改动：请先提交，或在任务里勾选「以当前 HEAD 为基线，忽略未提交改动」');
     }
-    if (!canStartExecution(workspaceId, board.settings)) {
+    if (!canStartExecution(workspaceId, board.settings, keyOf(workspaceId, taskId) + '::execute')) {
       if (isQueued) {
         const waiting = queues.get(workspaceId) || [];
-        waiting.unshift({ taskId });
+        waiting.unshift({ taskId, priority: task.priority || 'none' });
         queues.set(workspaceId, waiting);
         return { ok: true, board, result: { queued: true, position: 1 } };
       }
@@ -2090,7 +2386,7 @@ export function apply(ctx) {
       if (queue.length >= QUEUE_CAP) {
         return { ok: false, code: 'queue_full', error: '执行队列已满，请稍后再试', board };
       }
-      queue.push({ taskId });
+      queue.push({ taskId, priority: task.priority || 'none' });
       queues.set(workspaceId, queue);
       let queuedBoard = board;
       await lockedBoard(workspaceId, async (current) => {
@@ -2238,6 +2534,27 @@ export function apply(ctx) {
     pumpQueue(workspaceId);
   }
 
+  async function requestApproval(entry, question) {
+    const workspaceId = entry.workspaceId;
+    let accepted = false;
+    await lockedBoard(workspaceId, async (board) => {
+      const task = findTask(board, entry.taskId);
+      if (!task) return;
+      const from = task.status;
+      const to = confirmTransition('approval', from);
+      if (!to) return;
+      task.status = to;
+      task.pending = { kind: 'awaiting_approval', runId: entry.runId, question };
+      task.updatedAt = isoNow();
+      await saveBoard(workspaceId, board, auditEntry('agent:' + entry.sessionId, 'request_approval', task, from, to, { runId: entry.runId, reason: question }));
+      accepted = true;
+    });
+    if (!accepted) return;
+    entry.phase = 'input';
+    clearEntryTimer(entry);
+    pumpQueue(workspaceId);
+  }
+
   async function onRunTimeout(entry) {
     if (!entry || !runEntries.has(entry.key)) return;
     if (!['executing', 'reviewing', 'input', 'pr'].includes(entry.phase)) return;
@@ -2295,10 +2612,12 @@ export function apply(ctx) {
       });
       releaseEntry(entry, true);
       pumpQueue(workspaceId);
+      pumpReviewQueue(workspaceId).catch(() => undefined);
       return;
     }
     releaseEntry(entry, false);
     pumpQueue(workspaceId);
+    pumpReviewQueue(workspaceId).catch(() => undefined);
   }
 
   function firstPrFromForge(entry) {
@@ -2561,6 +2880,7 @@ export function apply(ctx) {
       releaseEntry(entry, entry.kind === 'review');
     });
     pumpQueue(workspaceId);
+    pumpReviewQueue(workspaceId).catch(() => undefined);
     return { ok: true, board: await ensureBoard(workspaceId) };
   }
 
@@ -2604,6 +2924,37 @@ export function apply(ctx) {
     entry.settled = false;
     armTimer(entry, kind === 'review' ? REVIEW_LIMIT_MINUTES : ((task.budget && task.budget.maxMinutes) || board.settings.maxMinutesPerRun));
     driveTurn(entry, userMessage('人工答复：' + text));
+    return { ok: true, board: await ensureBoard(workspaceId) };
+  }
+
+  async function approveTask(workspaceId, taskId, payload) {
+    const board = await ensureBoard(workspaceId);
+    const task = findTask(board, taskId);
+    if (!task) return { ok: false, code: 'not_ready', error: '任务不存在', board };
+    if (task.status !== 'awaiting_approval') return { ok: false, code: 'invalid_transition', error: '任务当前不需要批准', board };
+    const pending = task.pending || {};
+    const run = task.runs.find((item) => item.id === pending.runId);
+    const kind = run && run.kind === 'review' ? 'review' : 'execute';
+    const entry = findEntry(workspaceId, taskId, kind);
+    if (!entry) {
+      await blockTask(workspaceId, taskId, '执行会话已丢失，无法继续任务，请重试', pending.runId);
+      return { ok: false, code: 'not_ready', error: '执行会话已丢失，无法继续任务，请重试', board: await ensureBoard(workspaceId) };
+    }
+    const from = task.status;
+    const to = kind === 'review' ? 'reviewing' : 'running';
+    const note = asText(payload && payload.note, 4000);
+    await lockedBoard(workspaceId, async (current) => {
+      const target = findTask(current, taskId);
+      if (!target) return;
+      target.status = to;
+      target.pending = null;
+      target.updatedAt = isoNow();
+      await saveBoard(workspaceId, current, auditEntry('user', 'approve', target, from, to, { runId: pending.runId, reason: note }));
+    });
+    entry.phase = kind === 'review' ? 'reviewing' : 'executing';
+    entry.settled = false;
+    armTimer(entry, kind === 'review' ? REVIEW_LIMIT_MINUTES : ((task.budget && task.budget.maxMinutes) || board.settings.maxMinutesPerRun));
+    driveTurn(entry, userMessage('人工已批准' + (note ? '（意见：' + note + '）' : '') + '，请继续。'));
     return { ok: true, board: await ensureBoard(workspaceId) };
   }
 
@@ -2709,8 +3060,24 @@ export function apply(ctx) {
     return { ok: true, board: await ensureBoard(workspaceId) };
   }
 
-  async function cleanupTaskAction(workspaceId, taskId) {
+  async function archiveTaskAction(workspaceId, taskId) {
     const board = await ensureBoard(workspaceId);
+    const task = findTask(board, taskId);
+    if (!task) return { ok: false, code: 'not_ready', error: '任务不存在', board };
+    if (!['done', 'cancelled'].includes(task.status)) {
+      return { ok: false, code: 'invalid_transition', error: '只有已完成或已取消的任务可以归档', board };
+    }
+    await appendArchive(workspaceId, task);
+    await lockedBoard(workspaceId, async (current) => {
+      const target = findTask(current, taskId);
+      if (!target) return;
+      current.cards = current.cards.filter((card) => card.id !== taskId);
+      await saveBoard(workspaceId, current, auditEntry('user', 'archive', target, target.status, target.status, {}));
+    });
+    return { ok: true, board: await ensureBoard(workspaceId), result: { archived: true } };
+  }
+
+  async function cleanupTaskAction(workspaceId, taskId) {    const board = await ensureBoard(workspaceId);
     const task = findTask(board, taskId);
     if (!task) return { ok: false, code: 'not_ready', error: '任务不存在', board };
     if (!['done', 'cancelled'].includes(task.status)) {
@@ -2733,11 +3100,12 @@ export function apply(ctx) {
       case 'cancel': return cancelTask(workspaceId, taskId);
       case 'retry': return retryTask(workspaceId, taskId);
       case 'answer': return answerTask(workspaceId, taskId, payload);
-      case 'approve': return { ok: false, code: 'invalid_transition', error: '当前版本无等待批准分支', board: await ensureBoard(workspaceId) };
+      case 'approve': return approveTask(workspaceId, taskId, payload);
       case 'signoff': return signoffTask(workspaceId, taskId, payload);
       case 'reject': return rejectTask(workspaceId, taskId, payload);
       case 'create_pr': return createPr(workspaceId, taskId, null);
       case 'merge': return mergeTaskAction(workspaceId, taskId);
+      case 'archive': return archiveTaskAction(workspaceId, taskId);
       case 'cleanup': return cleanupTaskAction(workspaceId, taskId);
       default: return null;
     }
@@ -2795,6 +3163,7 @@ export function apply(ctx) {
         if (!findWorkspace(body.workspaceId)) return json(res, 400, { ok: false, error: 'unknown workspaceId' });
         if (!body.board || typeof body.board !== 'object') return json(res, 400, { ok: false, error: 'board required' });
         const workspaceId = String(body.workspaceId);
+        if (!(await authGuard(workspaceId, req, url))) return json(res, 401, { ok: false, code: 'unauthorized', error: '需要鉴权 token（x-task-board-token 或 ?token=）' });
         const expected = body.expectedRevision === undefined || body.expectedRevision === null ? 0 : asInt(body.expectedRevision, -1);
         const result = await lockedBoard(workspaceId, async () => {
           const oldBoard = await readBoard(workspaceId);
@@ -2816,6 +3185,7 @@ export function apply(ctx) {
         if (!body || !body.workspaceId || !body.taskId) return json(res, 400, { ok: false, error: 'workspaceId and taskId required' });
         if (!findWorkspace(body.workspaceId)) return json(res, 400, { ok: false, error: 'unknown workspaceId' });
         const workspaceId = String(body.workspaceId);
+        if (!(await authGuard(workspaceId, req, url))) return json(res, 401, { ok: false, code: 'unauthorized', error: '需要鉴权 token（x-task-board-token 或 ?token=）' });
         if (body.expectedRevision !== undefined && body.expectedRevision !== null) {
           const board = await readBoard(workspaceId);
           const revision = board ? board.revision : 0;
@@ -2833,6 +3203,7 @@ export function apply(ctx) {
         }
         if (!findWorkspace(body.workspaceId)) return json(res, 400, { ok: false, error: 'unknown workspaceId' });
         const workspaceId = String(body.workspaceId);
+        if (!(await authGuard(workspaceId, req, url))) return json(res, 401, { ok: false, code: 'unauthorized', error: '需要鉴权 token（x-task-board-token 或 ?token=）' });
         const taskId = String(body.taskId);
         if (body.expectedRevision !== undefined && body.expectedRevision !== null) {
           const board = await readBoard(workspaceId);
@@ -2844,6 +3215,65 @@ export function apply(ctx) {
         const result = await runAction(workspaceId, taskId, String(body.action), body.payload || {});
         if (!result) return json(res, 200, { ok: false, code: 'invalid_transition', error: '未知动作：' + body.action, board: await ensureBoard(workspaceId) });
         return json(res, 200, result);
+      }
+      if (method === 'POST' && sub === '/reconcile') {
+        const body = await readBody(req);
+        if (!body || !body.workspaceId) return json(res, 400, { ok: false, error: 'workspaceId required' });
+        if (!findWorkspace(body.workspaceId)) return json(res, 400, { ok: false, error: 'unknown workspaceId' });
+        if (!(await authGuard(String(body.workspaceId), req, url))) return json(res, 401, { ok: false, code: 'unauthorized', error: '需要鉴权 token（x-task-board-token 或 ?token=）' });
+        await reconcileAll();
+        return json(res, 200, { ok: true, board: await ensureBoard(String(body.workspaceId)) });
+      }
+      if (method === 'POST' && sub === '/settings') {
+        const body = await readBody(req);
+        if (!body || !body.workspaceId || !body.settings || typeof body.settings !== 'object') {
+          return json(res, 400, { ok: false, error: 'workspaceId and settings required' });
+        }
+        if (!findWorkspace(body.workspaceId)) return json(res, 400, { ok: false, error: 'unknown workspaceId' });
+        const workspaceId = String(body.workspaceId);
+        if (!(await authGuard(workspaceId, req, url))) return json(res, 401, { ok: false, code: 'unauthorized', error: '需要鉴权 token（x-task-board-token 或 ?token=）' });
+        let conflict = false;
+        let saved = null;
+        await lockedBoard(workspaceId, async (board) => {
+          if (body.expectedRevision !== undefined && body.expectedRevision !== null && asInt(body.expectedRevision, -1) !== board.revision) {
+            conflict = true;
+            saved = board;
+            return;
+          }
+          board.settings = normalizeSettings(Object.assign({}, board.settings, body.settings));
+          await saveBoard(workspaceId, board, auditEntry('user', 'settings', null, null, null, { reason: Object.keys(body.settings).join(',') }));
+          saved = board;
+        });
+        if (conflict) return json(res, 200, { ok: false, code: 'revision_conflict', error: '看板已在别处更新，请先刷新', board: saved });
+        return json(res, 200, { ok: true, board: saved });
+      }
+      if (method === 'GET' && sub === '/events') {
+        const workspaceId = url.searchParams.get('workspaceId');
+        if (!workspaceId) return json(res, 400, { ok: false, error: 'workspaceId required' });
+        if (!findWorkspace(workspaceId)) return json(res, 400, { ok: false, error: 'unknown workspaceId' });
+        const once = url.searchParams.get('once') === '1';
+        res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store', connection: 'keep-alive' });
+        let last = -1;
+        let closed = false;
+        const send = async () => {
+          if (closed) return;
+          const b = await ensureBoard(workspaceId);
+          if (b.revision !== last) {
+            last = b.revision;
+            res.write('event: board\ndata: ' + JSON.stringify({ workspaceId, revision: b.revision }) + '\n\n');
+          }
+        };
+        send().catch(() => undefined);
+        if (once) {
+          setTimeout(() => { closed = true; try { res.end(); } catch (e) { } }, 60);
+          return;
+        }
+        const iv = setInterval(() => { send().catch(() => undefined); }, 1500);
+        const ka = setInterval(() => { if (!closed) { try { res.write(': ping\n\n'); } catch (e) { } } }, 15000);
+        if (iv && typeof iv.unref === 'function') iv.unref();
+        if (ka && typeof ka.unref === 'function') ka.unref();
+        req.on('close', () => { closed = true; clearInterval(iv); clearInterval(ka); });
+        return;
       }
       if (method === 'GET' && sub === '/patch') {
         const workspaceId = url.searchParams.get('workspaceId');
@@ -2884,6 +3314,8 @@ export function apply(ctx) {
 
   async function reconcileBoard(workspaceId, board) {
     const changes = [];
+    const enqueueExec = [];
+    const scheduleReviewTasks = [];
     for (const task of board.cards) {
       if (!LIVE_STATUS.has(task.status)) continue;
       const updatedAt = Date.parse(task.updatedAt || '');
@@ -2893,49 +3325,73 @@ export function apply(ctx) {
       const agent = lastRun && lastRun.sessionId && agents && typeof agents.get === 'function'
         ? agents.get(lastRun.sessionId)
         : undefined;
-      if (!agent) {
-        const from = task.status;
-        task.status = 'blocked';
-        task.error = 'Host 重启，执行会话已丢失，请重试';
-        task.pending = null;
-        task.updatedAt = isoNow();
+      if (agent) {
+        if (!lastRun) continue;
+        const kind = lastRun.kind === 'review' ? 'review' : 'execute';
+        const phase = task.status === 'reviewing'
+          ? 'reviewing'
+          : (task.status === 'needs_input' ? 'input' : (task.status === 'running' ? 'executing' : 'submitted'));
+        const entry = {
+          key: keyOf(workspaceId, task.id) + '::' + kind,
+          workspaceId,
+          taskId: task.id,
+          kind,
+          runId: lastRun.id,
+          sessionId: lastRun.sessionId,
+          agent,
+          dispose: null,
+          phase,
+          timer: null,
+          startedAt: Date.now(),
+          worktree: lastRun.worktree,
+          worktreePath: lastRun.worktree ? lastRun.worktree.path : null,
+          model: lastRun.model || '',
+          settled: phase !== 'executing' && phase !== 'reviewing',
+          toolsReady: false,
+          prCapture: null,
+          limitMinutes: kind === 'review' ? REVIEW_LIMIT_MINUTES : 20,
+        };
+        adoptEntry(entry);
+        if (phase === 'executing' || phase === 'reviewing') armTimer(entry, entry.limitMinutes);
+        continue;
+      }
+      const from = task.status;
+      if (from === 'awaiting_review') {
+        scheduleReviewTasks.push(task.id);
+        continue;
+      }
+      if (from === 'reviewing') {
         if (lastRun && lastRun.status === 'running') {
           lastRun.status = 'failed';
           lastRun.endedAt = isoNow();
-          lastRun.error = task.error;
+          lastRun.error = 'Host 重启，评审会话重建';
         }
-        changes.push(auditEntry('host', 'reconcile', task, from, 'blocked', { reason: task.error, runId: lastRun ? lastRun.id : null }));
+        task.status = 'awaiting_review';
+        task.updatedAt = isoNow();
+        changes.push(auditEntry('host', 'reconcile_review_restart', task, from, 'awaiting_review', { runId: lastRun ? lastRun.id : null }));
+        scheduleReviewTasks.push(task.id);
         continue;
       }
-      if (!lastRun) continue;
-      const kind = lastRun.kind === 'review' ? 'review' : 'execute';
-      const phase = task.status === 'reviewing'
-        ? 'reviewing'
-        : (task.status === 'needs_input' ? 'input' : (task.status === 'running' ? 'executing' : 'submitted'));
-      const entry = {
-        key: keyOf(workspaceId, task.id) + '::' + kind,
-        workspaceId,
-        taskId: task.id,
-        kind,
-        runId: lastRun.id,
-        sessionId: lastRun.sessionId,
-        agent,
-        dispose: null,
-        phase,
-        timer: null,
-        startedAt: Date.now(),
-        worktree: lastRun.worktree,
-        worktreePath: lastRun.worktree ? lastRun.worktree.path : null,
-        model: lastRun.model || '',
-        settled: phase !== 'executing' && phase !== 'reviewing',
-        toolsReady: false,
-        prCapture: null,
-        limitMinutes: kind === 'review' ? REVIEW_LIMIT_MINUTES : 20,
-      };
-      adoptEntry(entry);
-      if (phase === 'executing' || phase === 'reviewing') armTimer(entry, entry.limitMinutes);
+      if (from === 'queued' || from === 'worktree_preparing' || from === 'running' || from === 'changes_requested') {
+        if (lastRun && lastRun.status === 'running' && lastRun.kind !== 'review') {
+          lastRun.status = 'failed';
+          lastRun.endedAt = isoNow();
+          lastRun.error = 'Host 重启，执行会话重建';
+        }
+        task.status = 'queued';
+        task.error = null;
+        task.updatedAt = isoNow();
+        changes.push(auditEntry('host', 'reconcile_requeue', task, from, 'queued', { runId: lastRun ? lastRun.id : null }));
+        enqueueExec.push(task.id);
+        continue;
+      }
+      task.status = 'blocked';
+      task.error = 'Host 重启，需人工继续（' + from + '）';
+      task.pending = null;
+      task.updatedAt = isoNow();
+      changes.push(auditEntry('host', 'reconcile', task, from, 'blocked', { reason: task.error, runId: lastRun ? lastRun.id : null }));
     }
-    return changes;
+    return { changes, enqueueExec, scheduleReviewTasks };
   }
 
   async function reconcileAll() {
@@ -2947,12 +3403,27 @@ export function apply(ctx) {
       const base = name.slice(0, -5);
       const workspace = workspaceList().find((item) => safeId(item.id) === base);
       if (!workspace) continue;
+      let result = null;
+      let snapshot = null;
       await lockedBoard(workspace.id, async (current) => {
-        const changes = await reconcileBoard(workspace.id, current);
-        if (!changes.length) return;
-        await saveBoard(workspace.id, current, null);
-        for (const change of changes) await appendAudit(workspace.id, change);
+        result = await reconcileBoard(workspace.id, current);
+        if (result.changes.length) {
+          await saveBoard(workspace.id, current, null);
+          for (const change of result.changes) await appendAudit(workspace.id, change);
+        }
+        snapshot = current;
       });
+      if (!result) continue;
+      for (const taskId of result.enqueueExec) {
+        const task = findTask(snapshot, taskId);
+        const queue = queues.get(workspace.id) || [];
+        if (!queue.some((item) => item.taskId === taskId)) queue.push({ taskId, priority: task ? task.priority : 'none' });
+        queues.set(workspace.id, queue);
+      }
+      if (result.enqueueExec.length) pumpQueue(workspace.id).catch(() => undefined);
+      for (const taskId of result.scheduleReviewTasks) {
+        scheduleReview(workspace.id, taskId).catch(() => undefined);
+      }
     }
   }
 
