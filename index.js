@@ -403,7 +403,10 @@ async function prepareWorktree(root, taskId, base) {
   const rev = await git(['rev-parse', '--verify', baseMode], root);
   if (!rev.ok) return { ok: false, error: '基线不存在：' + baseMode };
   const baseCommit = gitOutput(rev);
-  try { await fs.mkdir(path.dirname(worktreePath), { recursive: true }); } catch (e) { }
+  const pool = path.join(root, WORKTREE_ROOT);
+  try { await fs.mkdir(pool, { recursive: true }); } catch (e) { }
+  // 与 @deepseek-ai/dsh-experimental-worktree 一致：池目录自忽略，工作树不让仓库判脏。
+  try { await fs.writeFile(path.join(pool, '.gitignore'), '*\n', { flag: 'wx' }); } catch (e) { }
   const branchExists = await git(['rev-parse', '--verify', 'refs/heads/' + branch], root);
   const add = branchExists.ok
     ? await git(['worktree', 'add', worktreePath, branch], root, 120000)
@@ -1562,38 +1565,94 @@ export function apply(ctx) {
     return { provider: fallback.provider, model: text, label: fallback.provider + '/' + text };
   }
 
-  async function createSession(task, kind, cwd, setup) {
+  async function resolveAgentPreset() {
+    const presets = getService('agentPresets');
+    if (!presets || typeof presets.resolve !== 'function' || typeof presets.mount !== 'function') {
+      return { error: '宿主没有 agent preset 服务：任务会话拿不到文件与命令工具' };
+    }
+    try {
+      const resolved = await presets.resolve(undefined);
+      const id = resolved && resolved.id ? String(resolved.id) : '';
+      if (!id) return { error: '宿主没有可用的 agent preset' };
+      if (resolved.broken) return { error: 'agent preset「' + id + '」不可用：' + resolved.broken };
+      return { id, mount: (agentCtx) => presets.mount(agentCtx, id) };
+    } catch (error) {
+      return { error: '解析 agent preset 失败：' + String((error && error.message) || error) };
+    }
+  }
+
+  function workingDirectoryService() {
+    const service = getService('workingDirectory');
+    if (!service || typeof service.set !== 'function') return null;
+    return service;
+  }
+
+  async function attachSession(workspaceId, sessionId) {
+    const registry = getService('workspaceRegistry');
+    if (!registry || typeof registry.get !== 'function') return false;
+    let workspace;
+    try { workspace = registry.get(workspaceId); } catch (e) { workspace = null; }
+    if (!workspace || typeof workspace.attachSession !== 'function') return false;
+    try {
+      await workspace.attachSession(sessionId);
+      return true;
+    } catch (error) {
+      logWarn('会话挂到工作区失败', String((error && error.message) || error));
+      return false;
+    }
+  }
+
+  async function createSession(task, kind, cwd, setup, workspace) {
     const route = modelRoute(task, kind);
     if (route.error) return { ok: false, error: route.error };
+    const preset = await resolveAgentPreset();
+    if (preset.error) return { ok: false, error: preset.error };
     const agentOptions = { provider: route.provider, model: route.model };
     if (task.budget && task.budget.maxTokens) agentOptions.maxTokens = task.budget.maxTokens;
+    const workingDirectory = workingDirectoryService();
+    const workspacePath = workspace && workspace.path ? workspace.path : '';
+    const redirect = Boolean(workspacePath && workingDirectory && workspace && workspace.id);
+    const createCwd = redirect ? workspacePath : cwd;
     const sessionId = newId();
+    const runSetup = async (agentCtx, agent) => {
+      await preset.mount(agentCtx);
+      if (typeof setup === 'function') await setup(agentCtx, agent);
+    };
+    const meta = { cwd: createCwd, agentPreset: preset.id };
     const agents = agentsService();
+    let created = null;
+    let dispose = null;
     if (agents && typeof agents.create === 'function') {
       try {
-        const handle = await agents.create({ sessionId, meta: { cwd }, agentOptions, setup });
-        return {
-          ok: true,
-          sessionId,
-          agent: handle.agent,
-          dispose: handle && typeof handle.dispose === 'function' ? handle.dispose : null,
-          model: route.label,
-        };
+        const handle = await agents.create({ sessionId, meta, agentOptions, setup: runSetup });
+        created = handle.agent;
+        dispose = handle && typeof handle.dispose === 'function' ? handle.dispose : null;
+      } catch (error) {
+        return { ok: false, error: String((error && error.message) || error) };
+      }
+    } else {
+      const loop = getService('agentLoop');
+      if (!loop || typeof loop.create !== 'function') {
+        return { ok: false, error: '执行服务不可用（agents 与 agentLoop 均缺失）' };
+      }
+      try {
+        created = await loop.create(sessionId, agentOptions, { cwd: createCwd });
+        await runSetup(created.ctx, created);
       } catch (error) {
         return { ok: false, error: String((error && error.message) || error) };
       }
     }
-    const loop = getService('agentLoop');
-    if (!loop || typeof loop.create !== 'function') {
-      return { ok: false, error: '执行服务不可用（agents 与 agentLoop 均缺失）' };
-    }
+    if (!redirect) return { ok: true, sessionId, agent: created, dispose, model: route.label };
+    await attachSession(workspace.id, sessionId);
     try {
-      const agent = await loop.create(sessionId, agentOptions, { cwd });
-      if (typeof setup === 'function') await setup(agent.ctx, agent);
-      return { ok: true, sessionId, agent, dispose: null, model: route.label };
+      await workingDirectory.set(created, cwd);
     } catch (error) {
-      return { ok: false, error: String((error && error.message) || error) };
+      if (typeof dispose === 'function') {
+        try { Promise.resolve(dispose()).catch(() => undefined); } catch (e) { }
+      }
+      return { ok: false, error: '会话已建立，但无法把工作目录切到任务工作树：' + String((error && error.message) || error) };
     }
+    return { ok: true, sessionId, agent: created, dispose, model: route.label };
   }
 
   function conclude(exec) {
@@ -1828,13 +1887,27 @@ export function apply(ctx) {
           return { ok: true, message: '已请求人工批准' };
         },
       });
-      try { tools.restrict({ allow: ['read', 'glob', 'grep', 'bash'] }); }
-      catch (error) { logWarn('评审工具限制失败，已降级', String((error && error.message) || error)); }
+      const readOnly = ['read', 'glob', 'grep', 'read_image'];
+      const shellTool = process.platform === 'win32' ? 'pwsh' : 'bash';
+      const candidates = [readOnly.concat([shellTool]), ['read', 'glob', 'grep', shellTool], ['read']];
+      let allowedTools = null;
+      let restrictError = null;
+      for (const allow of candidates) {
+        try { tools.restrict({ allow }); allowedTools = allow; break; }
+        catch (error) { restrictError = error; }
+      }
+      if (!allowedTools) {
+        allowedTools = readOnly.concat([shellTool]);
+        logWarn('评审工具限制失败，改用逐次拦截', String((restrictError && restrictError.message) || restrictError));
+      }
+      const allowed = new Set(allowedTools.concat(['review_verdict', 'request_input', 'request_approval', 'run_verification']));
+      const shellNames = ['bash', 'pwsh', 'shell', 'terminal'];
       try {
         agentCtx.on('tools/pre-execute', async (execution, next) => {
           try {
             const name = String((execution && execution.name) || '');
-            if (['bash', 'pwsh', 'shell', 'terminal'].includes(name)) {
+            if (!allowed.has(name)) return { kind: 'deny', reason: '评审会话只读，不允许调用工具「' + name + '」' };
+            if (shellNames.includes(name)) {
               const args = (execution && execution.arguments) || {};
               const command = args.command || args.cmd || args.text || '';
               if (!isVerificationCommand(command)) return { kind: 'deny', reason: '评审会话只允许运行白名单验证命令' };
@@ -1843,7 +1916,7 @@ export function apply(ctx) {
           return next();
         });
       } catch (error) {
-        logWarn('评审 bash 白名单守卫安装失败', String((error && error.message) || error));
+        logWarn('评审只读守卫安装失败', String((error && error.message) || error));
       }
       try { agent.session.append('sandbox/mode', { mode: 'read-only', source: 'delegation' }); }
       catch (error) { logWarn('评审会话设置只读沙箱失败', String((error && error.message) || error)); }
@@ -1984,7 +2057,7 @@ export function apply(ctx) {
     const reviewTask = !task.reviewer && !task.executor && execRun && execRun.model
       ? Object.assign({}, task, { executor: execRun.model })
       : task;
-    const created = await createSession(reviewTask, 'review', worktree.path, (agentCtx, reviewAgent) => registerReviewTools(agentCtx, reviewAgent, holder));
+    const created = await createSession(reviewTask, 'review', worktree.path, (agentCtx, reviewAgent) => registerReviewTools(agentCtx, reviewAgent, holder), findWorkspace(workspaceId));
     if (!created.ok) {
       await failReviewStart(workspaceId, taskId, runId, created.error);
       return;
@@ -2570,7 +2643,7 @@ export function apply(ctx) {
     });
     if (!startedTask) return { ok: false, code: 'invalid_transition', error: '任务状态已变化，无法开始', board: await ensureBoard(workspaceId) };
     const holder = { entry: null, toolsReady: false };
-    const created = await createSession(startedTask, 'execute', prepared.path, (agentCtx, agent) => registerExecuteTools(agentCtx, agent, holder));
+    const created = await createSession(startedTask, 'execute', prepared.path, (agentCtx, agent) => registerExecuteTools(agentCtx, agent, holder), workspace);
     if (!created.ok) {
       return markStartFailure(workspaceId, taskId, 'failed', 'agent_unavailable', '执行会话创建失败：' + created.error, runId);
     }

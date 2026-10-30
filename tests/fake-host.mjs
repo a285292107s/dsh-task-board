@@ -115,11 +115,11 @@ function makeRes(onEnd) {
   return res;
 }
 
-function makeReq(method, url, payload) {
+function makeReq(method, url, payload, headers) {
   const req = new EventEmitter();
   req.method = method;
   req.url = url;
-  req.headers = { host: '127.0.0.1', 'content-type': 'application/json' };
+  req.headers = Object.assign({ host: '127.0.0.1', 'content-type': 'application/json' }, headers || {});
   req.destroy = () => {};
   req.setTimeout = () => req;
   process.nextTick(() => {
@@ -184,6 +184,19 @@ export async function createFakeHost(options = {}) {
     { id: WS_REPO, workspaceId: WS_REPO, title: 'Fixture Repo', path: REPO, sessionIds: [] },
     { id: WS_PLAIN, workspaceId: WS_PLAIN, title: 'Fixture Plain', path: PLAIN, sessionIds: [] },
   ];
+  // 真实 workspace.attachSession 会校验会话 header.cwd === 工作区路径；这里用同一约束复现。
+  for (const workspace of workspaces) {
+    workspace.attachSession = async function attachSession(sessionId) {
+      const record = created.find((entry) => entry.agent && entry.agent.id === sessionId);
+      const cwd = record && record.meta && record.meta.cwd;
+      if (cwd === undefined) throw new Error(`cannot attach session '${sessionId}': its stored header carries no cwd to validate against`);
+      if (path.resolve(cwd) !== path.resolve(this.path)) {
+        throw new Error(`cannot attach session '${sessionId}': its cwd resolves to '${cwd}'`);
+      }
+      if (!this.sessionIds.includes(sessionId)) this.sessionIds.unshift(sessionId);
+    };
+  }
+  host.workspaces = workspaces;
   // 工具按 sessionId 回退归属工作区的分支（契约：registry.list() 的 sessionIds）。
   host.mapSessionToWorkspace = (workspaceId, sessionId) => {
     const target = workspaces.find((w) => String(w.id) === String(workspaceId));
@@ -191,6 +204,20 @@ export async function createFakeHost(options = {}) {
     target.sessionIds.push(String(sessionId));
     return target;
   };
+
+  // ---- working directory：看板把会话建在工作区根，再切到任务工作树 ----
+  const workingDirectory = {
+    sets: [],
+    behavior: 'ok', // ok | throw
+    async set(agent, target) {
+      if (workingDirectory.behavior === 'throw') throw new Error('working directory 不可用（fixture）');
+      workingDirectory.sets.push({ agentId: agent.id, target: String(target) });
+      agent.session.append('working-directory/change', { cwd: String(target) });
+      return String(target);
+    },
+  };
+  host.workingDirectory = workingDirectory;
+  host.noWorkingDirectory = false;
 
   // ---- session projections（token 用量） ----
   const projections = {
@@ -240,6 +267,35 @@ export async function createFakeHost(options = {}) {
   };
   host.agentDefaultModel = agentDefaultModel;
 
+  // ---- agent presets：真实宿主靠 preset 把 fs / shell 工具挂进会话 ----
+  const presetTools = ['read', 'write', 'edit', 'glob', 'grep', 'bash', 'pwsh'];
+  const agentPresets = {
+    id: 'standard',
+    behavior: 'ok', // ok | mount-throw | resolve-throw
+    mounted: [],
+    async resolve() {
+      if (agentPresets.behavior === 'resolve-throw') throw new Error('agent preset 解析失败（fixture）');
+      return { id: agentPresets.id };
+    },
+    async mount(agentCtx) {
+      if (agentPresets.behavior === 'mount-throw') throw new Error('agent preset 挂载失败（fixture）');
+      agentPresets.mounted.push(agentCtx);
+      const disposers = presetTools.map((name) => agentCtx.tools.register({
+        name,
+        description: 'preset 工具 ' + name,
+        parameters: {
+          type: 'object',
+          properties: { command: { type: 'string' }, path: { type: 'string' } },
+          additionalProperties: true,
+        },
+        async execute() { return { ok: true, tool: name }; },
+      }));
+      return () => { for (const dispose of disposers) dispose(); };
+    },
+  };
+  host.agentPresets = agentPresets;
+  host.noAgentPresets = false;
+
   // ---- 主 ctx ----
   const ctx = {
     effect(fn) {
@@ -269,6 +325,8 @@ export async function createFakeHost(options = {}) {
       if (name === 'sessionProjections') return projections;
       if (name === 'llm') return host.noLlm ? undefined : llmService;
       if (name === 'agentDefaultModel') return agentDefaultModel;
+      if (name === 'agentPresets') return host.noAgentPresets ? undefined : agentPresets;
+      if (name === 'workingDirectory') return host.noWorkingDirectory ? undefined : workingDirectory;
       if (name === 'forgeSession') return host.forgeSession;
       if (name === 'tools') return rootTools;
       if (name === 'logger') return logger;
@@ -551,7 +609,7 @@ export async function createFakeHost(options = {}) {
       });
     });
     const res = resRef;
-    const req = makeReq(methodU, url, payload);
+    const req = makeReq(methodU, url, payload, opts.headers);
     let handlerError = null;
     const hop = Promise.resolve()
       .then(() => route.handler(req, res))
@@ -738,6 +796,7 @@ const shorten = (v, n = 400) => {
 
 async function runTests(host) {
   const WS = WS_REPO;
+  const SHELL_TOOL = process.platform === 'win32' ? 'pwsh' : 'bash';
   const results = [];
   let boardTaskSeq = 0;
   let rootToolCallSeq = 0;
@@ -987,10 +1046,21 @@ async function runTests(host) {
     assertEqual(rec.agentOptions.provider, 'deepseek-account', '模型留空时应补宿主默认 provider，实际 ' + shorten(rec.agentOptions));
     assertEqual(rec.agentOptions.model, 'deepseek-flash', '模型留空时应补宿主默认 model，实际 ' + shorten(rec.agentOptions));
     assertEqual(run.model, 'deepseek-account/deepseek-flash', 'Run 应记录实际使用的模型，实际 ' + shorten(run.model));
-    assertEqual(path.resolve(rec.meta && rec.meta.cwd || ''), path.resolve(worktreePath), 'agent meta.cwd 应为 worktree');
+    assertEqual(path.resolve(rec.meta && rec.meta.cwd || ''), path.resolve(REPO), 'agent meta.cwd 应为工作区根（DSH 默认新建逻辑）');
+    assertEqual(rec.meta && rec.meta.agentPreset, 'standard', 'agent meta 应带 agentPreset');
+    const wdCall = host.workingDirectory.sets.find((item) => item.agentId === run.sessionId);
+    assert(wdCall, '应把会话工作目录切到任务工作树，实际 ' + shorten(host.workingDirectory.sets));
+    assertEqual(path.resolve(wdCall.target), path.resolve(worktreePath), '切到的工作目录应是任务工作树');
+    const wsRecord = host.workspaces.find((item) => item.id === WS);
+    assert(wsRecord && wsRecord.sessionIds.includes(run.sessionId),
+      '执行会话应挂到工作区（出现在 DSH 侧栏），实际 ' + shorten(wsRecord && wsRecord.sessionIds));
     assert(execAgent.followups.length >= 1, '执行 agent 应收到 followup 任务 prompt');
     assert(JSON.stringify(execAgent.followups[0]).includes('执行任务'), 'followup 应包含任务标题');
     assert(execAgent.tools.has('submit_for_review'), '执行会话应注册 submit_for_review 工具，实际已注册: ' + [...execAgent.tools.keys()].join(','));
+    assert(execAgent.tools.has('read') && execAgent.tools.has('write'),
+      '执行会话应挂载 preset 的文件工具，实际已注册: ' + [...execAgent.tools.keys()].join(','));
+    assert(execAgent.tools.has(SHELL_TOOL), '执行会话应挂载命令工具 ' + SHELL_TOOL + '，实际: ' + [...execAgent.tools.keys()].join(','));
+    assert(host.agentPresets.mounted.length >= 1, '执行会话应经 agentPresets.mount 挂载 preset');
     const execAudit = await host.auditLines();
     assert(execAudit.some((l) => l && l.taskId === execCard.id), '审计应记录 start（taskId=' + execCard.id + '）');
     host._execCard = card;
@@ -1101,10 +1171,12 @@ async function runTests(host) {
   });
 
   // 8f. 任务工作树目录不算未提交（真实仓库默认不会 gitignore .agents/）
-  await test('工作树目录不算未提交：.agents/worktrees 被 git 探测排除', async () => {
+  await test('工作树目录不算未提交 + 池目录自忽略', async () => {
+    const pool = path.join(REPO, '.agents', 'worktrees');
+    await fs.rm(path.join(pool, '.gitignore'), { force: true });
     const raw = await git(['status', '--porcelain'], REPO);
     assert(String(raw.stdout).includes('.agents'),
-      '前置条件：fixture 仓库不应忽略 .agents，实际 status=' + shorten(raw.stdout));
+      '前置条件：没有池 .gitignore 时 .agents 应显示为未跟踪，实际 status=' + shorten(raw.stdout));
     const probe = await host.call('GET', '/git?path=' + encodeURIComponent(REPO));
     assertEqual(probe.status, 200, 'GET /git 状态码');
     assertEqual(probe.json.dirty, false, '/git 应忽略 .agents/worktrees，实际 ' + shorten(probe.json));
@@ -1116,8 +1188,84 @@ async function runTests(host) {
     assert(start.json && start.json.ok === true, '已有工作树时新任务仍应能启动，实际 ' + shorten(start.text));
     const running = await host.waitCardStatus(card.id, ['running'], '工作树不挡启动：进入执行');
     assertEqual(running.error, null, '不应写入 dirty 错误，实际 ' + shorten(running.error));
+    const ignore = await fs.readFile(path.join(pool, '.gitignore'), 'utf8').catch(() => null);
+    assertEqual(ignore, '*\n', '分配工作树池时应写入自忽略的 .gitignore');
+    const rawAfter = await git(['status', '--porcelain'], REPO);
+    assertEqual(String(rawAfter.stdout).trim(), '', '池目录自忽略后原始 git status 应为空，实际 ' + shorten(rawAfter.stdout));
     await host.action(card.id, 'cancel');
     await sleep(30);
+  });
+
+  // 8g. preset 挂载失败 / 缺服务：启动失败并写清原因
+  await test('agent preset 挂载失败：启动失败 agent_unavailable', async () => {
+    host.agentPresets.behavior = 'mount-throw';
+    try {
+      const card = makeCard('preset 挂载失败任务');
+      await addCard(card);
+      const start = await host.start(card.id);
+      assert(start.json && start.json.ok === false, '应启动失败，实际 ' + shorten(start.text));
+      assertEqual(start.json.code, 'agent_unavailable', '失败 code');
+      assert(String(start.json.error).includes('挂载失败'), '错误应带上 preset 挂载原因，实际 ' + shorten(start.json.error));
+      const failed = await host.card(card.id);
+      assertEqual(failed.status, 'failed', '启动失败后卡片应为 failed');
+    } finally {
+      host.agentPresets.behavior = 'ok';
+    }
+  });
+
+  await test('宿主缺少 agent preset 服务：启动失败并点名原因', async () => {
+    host.noAgentPresets = true;
+    try {
+      const card = makeCard('缺 preset 服务任务');
+      await addCard(card);
+      const start = await host.start(card.id);
+      assert(start.json && start.json.ok === false, '应启动失败，实际 ' + shorten(start.text));
+      assertEqual(start.json.code, 'agent_unavailable', '失败 code');
+      assert(String(start.json.error).includes('agent preset'), '错误应点名 agent preset，实际 ' + shorten(start.json.error));
+    } finally {
+      host.noAgentPresets = false;
+    }
+  });
+
+  // 8h. 缺 workingDirectory 服务：退回「cwd = 工作树」，不挂工作区
+  await test('缺 workingDirectory 服务：会话以工作树为 cwd 创建（兼容兜底）', async () => {
+    const marker = host.workingDirectory.sets.length;
+    host.noWorkingDirectory = true;
+    host.autoTurnEnd = false;
+    try {
+      const card = makeCard('无 workingDirectory 任务');
+      await addCard(card);
+      const start = await host.start(card.id);
+      assert(start.json && start.json.ok === true, 'start 应成功，实际 ' + shorten(start.text));
+      const running = await host.waitCardStatus(card.id, ['running'], '兜底用例进入执行');
+      const run = running.runs[running.runs.length - 1];
+      const rec = host.created.find((item) => item.agent && item.agent.id === run.sessionId);
+      assertEqual(path.resolve(rec.meta.cwd), path.resolve(run.worktree.path), '无 workingDirectory 时 cwd 应为工作树');
+      assertEqual(host.workingDirectory.sets.length, marker, '不应调用 workingDirectory.set');
+      const wsRecord = host.workspaces.find((item) => item.id === WS);
+      assert(!wsRecord.sessionIds.includes(run.sessionId), '兜底路径不应把会话挂进工作区');
+      await host.action(card.id, 'cancel');
+      await sleep(30);
+    } finally {
+      host.noWorkingDirectory = false;
+    }
+  });
+
+  // 8i. 工作目录切换失败：启动失败（不允许在根仓库里执行）
+  await test('工作目录切换失败：启动失败 agent_unavailable', async () => {
+    host.workingDirectory.behavior = 'throw';
+    try {
+      const card = makeCard('工作目录失败任务');
+      await addCard(card);
+      const start = await host.start(card.id);
+      assert(start.json && start.json.ok === false, '应启动失败，实际 ' + shorten(start.text));
+      assertEqual(start.json.code, 'agent_unavailable', '失败 code');
+      assert(String(start.json.error).includes('工作目录'), '错误应说明工作目录切换失败，实际 ' + shorten(start.json.error));
+      const failed = await host.card(card.id);
+      assertEqual(failed.status, 'failed', '启动失败后卡片应为 failed');
+    } finally {
+      host.workingDirectory.behavior = 'ok';
+    }
   });
 
   // 9. turn/end → awaiting_review → 评审 agent
@@ -1133,14 +1281,26 @@ async function runTests(host) {
     assert(rec, '评审 agent 应有创建记录');
     await host.waitFor(() => rec.agent.followups.length > 0, '评审 agent 收到评审 prompt', 8000);
     assert(rec.agent.id !== execAgent.id, '评审会话应是新会话');
-    assertEqual(path.resolve(rec.meta && rec.meta.cwd || ''), path.resolve(worktreePath), '评审 agent cwd 应为 worktree');
-    assertEqual(JSON.stringify(rec.agent.meta && rec.agent.meta.cwd || ''), JSON.stringify(worktreePath), '评审 agent meta.cwd');
+    assertEqual(path.resolve(rec.meta && rec.meta.cwd || ''), path.resolve(REPO), '评审 agent cwd 应为工作区根');
+    assertEqual(JSON.stringify(rec.agent.meta && rec.agent.meta.cwd || ''), JSON.stringify(REPO), '评审 agent meta.cwd');
+    const reviewWs = host.workspaces.find((item) => item.id === WS);
+    assert(reviewWs && reviewWs.sessionIds.includes(rec.agent.id),
+      '评审会话也应挂到工作区，实际 ' + shorten(reviewWs && reviewWs.sessionIds));
+    const reviewWd = host.workingDirectory.sets.find((item) => item.agentId === rec.agent.id);
+    assert(reviewWd && path.resolve(reviewWd.target) === path.resolve(worktreePath),
+      '评审会话工作目录应切到任务工作树，实际 ' + shorten(host.workingDirectory.sets));
     const appendTypes = rec.agent.session.events.map((e) => e.type + ':' + JSON.stringify(e.data || {}));
     assert(appendTypes.some((t) => /sandbox\/mode/.test(t) && /read-only/.test(t)),
       '评审会话应 append sandbox/mode=read-only，实际 ' + shorten(appendTypes));
     assert(JSON.stringify(appendTypes).includes('approval/policy'), '评审会话应 append approval/policy');
     assert(rec.agent.restricted && Array.isArray(rec.agent.restricted.allow) && rec.agent.restricted.allow.includes('read'),
       '评审应调用 tools.restrict 限制为只读工具，实际 ' + shorten(rec.agent.restricted));
+    assert(rec.agent.restricted.allow.includes(SHELL_TOOL),
+      '评审限制应包含平台命令工具 ' + SHELL_TOOL + '，实际 ' + shorten(rec.agent.restricted.allow));
+    assert(!rec.agent.restricted.allow.includes('write') && !rec.agent.restricted.allow.includes('edit'),
+      '评审限制不应包含写工具，实际 ' + shorten(rec.agent.restricted.allow));
+    assert(rec.agent.tools.has(SHELL_TOOL) && rec.agent.tools.has('read'),
+      '评审会话应挂载 preset 的只读/命令工具，实际: ' + [...rec.agent.tools.keys()].join(','));
     assert(rec.agent.ctx.listeners.has('tools/pre-execute') && rec.agent.ctx.listeners.get('tools/pre-execute').length > 0,
       '评审应在 agentCtx 上注册 tools/pre-execute 拦截');
     assert(rec.agent.followups.length >= 1, '评审 agent 应收到评审 prompt');
@@ -1729,10 +1889,16 @@ async function runTests(host) {
   async function startToReview(card, label) {
     host.autoTurnEnd = true;
     await addCard(card);
-    const before = host.reviewAgentRecords().length;
     const started = await host.start(card.id);
     assert(started.json && started.json.ok === true, label + '：start 应成功，实际 ' + shorten(started.text));
-    return host.nextReviewAgent(before, label + '：评审 agent');
+    // 等这张卡自己的评审会话：并发评审下，别的卡先起评审会让「新评审数 +1」提前满足。
+    const run = await host.waitFor(async () => {
+      const current = await host.card(card.id);
+      const reviewRun = [...((current && current.runs) || [])].reverse().find((item) => item.kind === 'review');
+      return reviewRun && reviewRun.sessionId ? reviewRun : null;
+    }, label + '：评审 Run 落 sessionId', 15000);
+    return host.waitFor(() => host.reviewAgentRecords().find((rec) => rec.agent.id === run.sessionId),
+      label + '：评审 agent', 15000).then((rec) => rec.agent);
   }
 
   async function executeWorktree(cardId, label) {
@@ -1746,11 +1912,21 @@ async function runTests(host) {
     return path.join(HOME, 'task-board', workspaceId + '.json');
   }
 
+  // 走 /settings 路由（与其它写盘串行、带 CAS），避免直接改文件被并发 saveBoard 覆盖。
   async function setBoardSettings(patch) {
-    const file = boardJsonPath();
-    const parsed = JSON.parse(await fs.readFile(file, 'utf8'));
-    parsed.settings = Object.assign({}, parsed.settings || {}, patch);
-    await fs.writeFile(file, JSON.stringify(parsed), 'utf8');
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const current = (await host.getBoard()).board;
+      const token = current && current.settings ? String(current.settings.authToken || '') : '';
+      const r = await host.call('POST', '/settings', {
+        workspaceId: WS_REPO,
+        settings: Object.assign({}, patch),
+        expectedRevision: current ? current.revision : 0,
+      }, token ? { headers: { 'x-task-board-token': token } } : {});
+      if (r.json && r.json.ok) return;
+      if (r.json && r.json.code === 'revision_conflict') { await sleep(10); continue; }
+      throw new Error('setBoardSettings 失败: ' + shorten(r.text));
+    }
+    throw new Error('setBoardSettings 连续版本冲突');
   }
 
   // 22b. 优先级调度
@@ -1983,8 +2159,8 @@ async function runTests(host) {
       const reviewRun = [...(fetched.runs || [])].reverse().find((run) => run.kind === 'review');
       assert(reviewRun && Array.isArray(reviewRun.verifications) && reviewRun.verifications.some((v) => v.command === 'git status'),
         'hiddenVerify 应被执行并记录，实际 ' + shorten(reviewRun && reviewRun.verifications));
-      try { await host.action(card.id, 'cancel'); } catch (e) { }
     } finally {
+      try { await host.action(card.id, 'cancel'); } catch (e) { }
       await setBoardSettings({ hiddenVerify: [] });
     }
   });

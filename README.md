@@ -96,7 +96,9 @@ dsh plugin --profile web remove dsh-task-board
    工作树副本；工作区有未提交改动时，需要勾选「以当前 HEAD 为基线，忽略未提交改动」。任务工作树目录
    `.agents/worktrees` 本身不计入未提交，不用为它提交或加 `.gitignore`。
 4. AI 在独立任务副本里执行，完成后自动进入 AI 评审。评审打回会自动返工；达到轮数上限则转为人工处理。
-   AI 需要你补充信息时，抽屉会显示问题，回答后会回到原会话继续。
+   AI 需要你补充信息时，抽屉会显示问题，回答后会回到原会话继续。执行 / 评审会话按宿主默认方式创建
+   （挂默认 agent preset、挂进当前工作区），所以**会出现在 DSH 侧栏的会话列表里**；它们的工作目录
+   指向任务副本，根仓库不受影响。
 5. 评审通过后进入「待签收」。在抽屉里核对执行记录、评审意见与交付物：
    - **通过签字**：可写备注；勾选「签字后合并到根仓库当前分支」则先合并再标完成。
    - **打回返工**：备注作为返工意见回到执行会话。
@@ -149,7 +151,7 @@ dsh plugin --profile web remove dsh-task-board
 
 ```bash
 npm run check   # node --check index.js + node --check client.js
-npm test        # 假宿主回归，56 项（tests/fake-host.mjs）
+npm test        # 假宿主回归，60 项（tests/fake-host.mjs）
 ```
 
 GitHub Actions（`.github/workflows/verify.yml`）在 push / PR 到 `main` 时跑同样三步；测试不需要
@@ -184,9 +186,9 @@ dsh --profile kanban-dev --port 3081
 - ✅ 证据门禁：结构化 evidence、评审内真实跑验证并由 Host 记录、无证据/验证失败不能通过、空交付不能签字
 - ✅ 审计与指标读侧：`GET /audit`、`GET /stats`、抽屉审计时间线、头部治理条、Run token 展示
 - ✅ 启动一致性：开始前先落盘、`/start` 带版本校验；坏板 JSON 自动备份
-- 🚧 token 预算熔断（成本已展示，暂不中止）
-- 🚧 等待批准（`approve`）分支
-- 🚧 任务依赖 / 并行拆分（DAG、Team）、看板设置页、多语言
+- ✅ 任务级预算熔断（`maxMinutesPerTask` / `maxTokensPerTask` 超限转人工）、等待批准（`approve`）、
+  任务依赖（`blockedBy`）、看板设置、隐藏验收、SSE、归档、可选 token 鉴权
+- 🚧 任务并行拆分（Team）、多语言
 - 🚧 上下文资产绑定、变更请求通道、风险/权限分级
 - 🚧 PR checks 自动刷新、自动 rebase、工作树保留期策略
 - 🚧 真实 DSH 实例端到端验证（执行 / 评审 / 签收链路尚未在真实宿主复验）
