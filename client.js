@@ -211,7 +211,7 @@ body[data-ds-dark-theme] .kb{
 .kb-field{display:flex;flex-direction:column;gap:5px;min-width:0}
 .kb-field>label{font-size:11.5px;color:var(--meta);font-weight:600}
 .kb-input,.kb-area,.kb-select2{width:100%;font:inherit;font-size:13px;color:var(--ink);background:color-mix(in srgb,var(--ink) 4%,transparent);border:1px solid transparent;border-radius:9px;padding:7px 10px;outline:none;transition:border-color .15s ease,background .15s ease}
-.kb-input:focus,.kb-area:focus,.kb-select2:focus{border-color:var(--accent);background:var(--card)}
+.kb-input:focus,.kb-area:focus,.kb-select2:focus{border-color:var(--accent);background-color:var(--card)}
 .kb-select2{appearance:none;cursor:pointer;padding-right:30px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16'%3E%3Cpath d='M4 6.2 8 10l4-3.8' fill='none' stroke='%238b877a' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}
 body[data-ds-dark-theme] .kb .kb-input,body[data-ds-dark-theme] .kb .kb-area,body[data-ds-dark-theme] .kb .kb-select2{background-color:color-mix(in srgb,var(--ink) 8%,transparent)}
 body[data-ds-dark-theme] .kb .kb-select2{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16'%3E%3Cpath d='M4 6.2 8 10l4-3.8' fill='none' stroke='%23aaa69c' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")}
