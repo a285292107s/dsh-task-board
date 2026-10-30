@@ -823,6 +823,12 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
 
       useEffect(function () { loadModels(); }, []);
 
+      useEffect(function () {
+        if (!openId) return;
+        const ws = wsList.find(function (w) { return w.id === wsId; });
+        if (ws) probeGit(ws);
+      }, [openId, wsId]);
+
       function modelLabel(value) {
         const text = String(value || "");
         if (!text) return "";

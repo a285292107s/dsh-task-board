@@ -93,7 +93,8 @@ dsh plugin --profile web remove dsh-task-board
    模型 / 评审模型**（选项来自宿主已配置的服务提供方与模型；留空时执行用宿主默认模型，评审默认同
    执行模型）；预算与基线默认跟随看板默认值。
 3. 点「开始执行」，或把卡片拖入「进行中」。前提：工作区是 Git 仓库且至少有一次提交，并且不是另一个
-   工作树副本；工作区有未提交改动时，需要勾选「以当前 HEAD 为基线，忽略未提交改动」。
+   工作树副本；工作区有未提交改动时，需要勾选「以当前 HEAD 为基线，忽略未提交改动」。任务工作树目录
+   `.agents/worktrees` 本身不计入未提交，不用为它提交或加 `.gitignore`。
 4. AI 在独立任务副本里执行，完成后自动进入 AI 评审。评审打回会自动返工；达到轮数上限则转为人工处理。
    AI 需要你补充信息时，抽屉会显示问题，回答后会回到原会话继续。
 5. 评审通过后进入「待签收」。在抽屉里核对执行记录、评审意见与交付物：
@@ -148,7 +149,7 @@ dsh plugin --profile web remove dsh-task-board
 
 ```bash
 npm run check   # node --check index.js + node --check client.js
-npm test        # 假宿主回归，55 项（tests/fake-host.mjs）
+npm test        # 假宿主回归，56 项（tests/fake-host.mjs）
 ```
 
 GitHub Actions（`.github/workflows/verify.yml`）在 push / PR 到 `main` 时跑同样三步；测试不需要

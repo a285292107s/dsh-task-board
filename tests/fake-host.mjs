@@ -68,7 +68,7 @@ async function setupFixtures() {
   await git(['config', 'user.name', 'Fixture Bot'], REPO);
   await git(['config', 'commit.gpgsign', 'false'], REPO);
 
-  await fs.writeFile(path.join(REPO, '.gitignore'), '.agents/\n', 'utf8');
+  await fs.writeFile(path.join(REPO, '.gitignore'), '*.log\n', 'utf8');
   await fs.writeFile(path.join(REPO, 'README.md'), '# fixture repo\n', 'utf8');
   await fs.mkdir(path.join(REPO, 'src'), { recursive: true });
   await fs.writeFile(path.join(REPO, 'src', 'app.txt'), 'hello\n', 'utf8');
@@ -1098,6 +1098,26 @@ async function runTests(host) {
     } finally {
       host.agentDefaultModel.selection = previous;
     }
+  });
+
+  // 8f. 任务工作树目录不算未提交（真实仓库默认不会 gitignore .agents/）
+  await test('工作树目录不算未提交：.agents/worktrees 被 git 探测排除', async () => {
+    const raw = await git(['status', '--porcelain'], REPO);
+    assert(String(raw.stdout).includes('.agents'),
+      '前置条件：fixture 仓库不应忽略 .agents，实际 status=' + shorten(raw.stdout));
+    const probe = await host.call('GET', '/git?path=' + encodeURIComponent(REPO));
+    assertEqual(probe.status, 200, 'GET /git 状态码');
+    assertEqual(probe.json.dirty, false, '/git 应忽略 .agents/worktrees，实际 ' + shorten(probe.json));
+    assertEqual(probe.json.dirtyCount, 0, 'dirtyCount 应为 0，实际 ' + shorten(probe.json.dirtyCount));
+    host.autoTurnEnd = false;
+    const card = makeCard('工作树不挡启动任务');
+    await addCard(card);
+    const start = await host.start(card.id);
+    assert(start.json && start.json.ok === true, '已有工作树时新任务仍应能启动，实际 ' + shorten(start.text));
+    const running = await host.waitCardStatus(card.id, ['running'], '工作树不挡启动：进入执行');
+    assertEqual(running.error, null, '不应写入 dirty 错误，实际 ' + shorten(running.error));
+    await host.action(card.id, 'cancel');
+    await sleep(30);
   });
 
   // 9. turn/end → awaiting_review → 评审 agent

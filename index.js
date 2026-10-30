@@ -12,6 +12,7 @@ const MAX_PATCH = 2 * 1024 * 1024;
 const MAX_DIFF_PROMPT = 40 * 1024;
 const QUEUE_CAP = 50;
 const GLOBAL_RUN_CAP = 4;
+const WORKTREE_ROOT = '.agents/worktrees';
 const REVIEW_LIMIT_MINUTES = 15;
 const PR_TIMEOUT_MS = 90000;
 const VERIFY_TIMEOUT_MS = 120000;
@@ -353,7 +354,7 @@ async function gitProbe(dir) {
   const root = gitOutput(top);
   const branch = await git(['rev-parse', '--abbrev-ref', 'HEAD'], root);
   const head = await git(['rev-parse', '--verify', 'HEAD'], root);
-  const status = await git(['status', '--porcelain'], root);
+  const status = await git(['status', '--porcelain', '--', '.', ':(exclude)' + WORKTREE_ROOT], root);
   const remote = await git(['remote', '-v'], root);
   const gitDir = await git(['rev-parse', '--git-dir'], root);
   const commonDir = await git(['rev-parse', '--git-common-dir'], root);
@@ -378,7 +379,7 @@ async function gitProbe(dir) {
 
 async function prepareWorktree(root, taskId, base) {
   const shortId = safeId(taskId);
-  const worktreePath = path.join(root, '.agents', 'worktrees', 'task-' + shortId);
+  const worktreePath = path.join(root, WORKTREE_ROOT, 'task-' + shortId);
   const branch = 'task-' + shortId;
   if (await pathExists(worktreePath)) {
     const probe = await git(['rev-parse', '--abbrev-ref', 'HEAD'], worktreePath);
@@ -2939,7 +2940,7 @@ export function apply(ctx) {
     const workspace = findWorkspace(workspaceId);
     if (!workspace || !workspace.path) return { ok: false, error: '工作区路径缺失' };
     const worktree = latestExecuteWorktree(task);
-    const worktreePath = (worktree && worktree.path) || path.join(workspace.path, '.agents', 'worktrees', 'task-' + safeId(task.id));
+    const worktreePath = (worktree && worktree.path) || path.join(workspace.path, WORKTREE_ROOT, 'task-' + safeId(task.id));
     const branch = (task.delivery && task.delivery.branch) || (worktree && worktree.branch) || 'task-' + safeId(task.id);
     const errors = [];
     const removed = await git(['-C', workspace.path, 'worktree', 'remove', '--force', worktreePath], workspace.path, 120000);
