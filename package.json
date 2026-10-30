@@ -17,6 +17,10 @@
     "icon.svg",
     "locale/*.json"
   ],
+  "scripts": {
+    "check": "node --check index.js && node --check client.js",
+    "test": "node tests/fake-host.mjs"
+  },
   "engines": {
     "dsh": ">=0.2.0 <0.3.0",
     "node": ">=22"
