@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 export const inject = ['webServer'];
 
 const ROUTE_PREFIX = '/task-board-api';
-const SNAPSHOT_TTL_MS = 5000;
+const SNAPSHOT_TTL_MS = 10000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DETAIL_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DETAIL_LIMIT = 16;
