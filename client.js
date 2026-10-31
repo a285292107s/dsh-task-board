@@ -220,6 +220,19 @@ body[data-ds-dark-theme] .kb{
     const FAILURE_STATES = { failed: 1, blocked: 1, interrupted: 1, max_tokens: 1 };
     const WORKING_STATES = { running: 1, subagent: 1, job: 1, scheduled: 1, goal_waiting: 1 };
     const PENDING_STATE = { question: "asking", approval: "approving", "plan-review": "plan_review" };
+    const PREFS_KEY = "dsh.task-board.prefs.v1";
+    const DAY_VALUES = [0, 7, 30, 90];
+
+    function readPrefs() {
+      try {
+        const value = JSON.parse(localStorage.getItem(PREFS_KEY) || "{}") || {};
+        const days = typeof value.days === "number" && DAY_VALUES.indexOf(value.days) >= 0 ? value.days : 7;
+        const workspace = typeof value.workspace === "string" && value.workspace ? value.workspace : "all";
+        return { days: days, workspace: workspace };
+      } catch (e) {
+        return { days: 7, workspace: "all" };
+      }
+    }
 
     let clientCtx = null;
 
@@ -274,8 +287,8 @@ body[data-ds-dark-theme] .kb{
     function duration(ms) {
       if (ms === null || ms === undefined || !Number.isFinite(Number(ms))) return "";
       const value = Math.max(0, Number(ms));
-      if (value < 60000) return Math.max(1, Math.round(value / 1000)) + " 秒";
-      if (value < 3600000) return Math.round(value / 60000) + " 分钟";
+      if (value < 60000) return Math.max(1, Math.floor(value / 1000)) + " 秒";
+      if (value < 3600000) return Math.floor(value / 60000) + " 分钟";
       const hours = Math.floor(value / 3600000);
       const minutes = Math.round((value % 3600000) / 60000);
       return minutes ? hours + " 小时 " + minutes + " 分" : hours + " 小时";
@@ -288,10 +301,31 @@ body[data-ds-dark-theme] .kb{
     function plain(value) {
       return String(value || "")
         .replace(/```[\s\S]*?```/g, " ")
+        .replace(/`([^`\n]+)`/g, "$1")
+        .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
         .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-        .replace(/[#*_>`~]/g, " ")
+        .replace(/^\s{0,3}#{1,6}\s+/gm, " ")
+        .replace(/^\s{0,3}[*+-]\s+/gm, " ")
+        .replace(/\*\*([^*\n]+)\*\*/g, "$1")
+        .replace(/__([^_\n]+)__/g, "$1")
+        .replace(/~~([^~\n]+)~~/g, "$1")
+        .replace(/(?<![\p{L}\p{N}])_([^_\n]+)_(?![\p{L}\p{N}])/gu, "$1")
+        .replace(/\*([^*\n]+)\*/g, "$1")
         .replace(/\s+/g, " ")
         .trim();
+    }
+
+    function localizedText(value) {
+      if (value === null || value === undefined) return "";
+      if (typeof value === "string") return value;
+      if (typeof value !== "object") return String(value);
+      const zh = value.zh || value["zh-CN"] || value.zh_CN;
+      if (typeof zh === "string") return zh;
+      if (typeof value.en === "string") return value.en;
+      for (const key of Object.keys(value)) {
+        if (typeof value[key] === "string") return value[key];
+      }
+      return "";
     }
 
     function snippet(value, max) {
@@ -303,7 +337,7 @@ body[data-ds-dark-theme] .kb{
     function formatTokens(value) {
       const number = Number(value);
       if (!Number.isFinite(number) || number <= 0) return "";
-      if (number >= 1000000) return (number / 1000000).toFixed(1).replace(/\.0$/, "") + "m";
+      if (number >= 999500) return (number / 1000000).toFixed(1).replace(/\.0$/, "") + "m";
       if (number >= 1000) return (number / 1000).toFixed(1).replace(/\.0$/, "") + "k";
       return String(Math.round(number));
     }
@@ -335,7 +369,7 @@ body[data-ds-dark-theme] .kb{
     function pendingInfo(pending) {
       if (!pending) return null;
       if (pending.kind === "approval") {
-        const reason = plain(pending.displayReason || pending.reason || "");
+        const reason = plain(localizedText(pending.displayReason) || pending.reason || "");
         return {
           kind: "approval",
           state: "approving",
@@ -346,14 +380,32 @@ body[data-ds-dark-theme] .kb{
       }
       const questions = Array.isArray(pending.questions) ? pending.questions : [];
       const first = questions[0] || {};
+      const intent = first.intent && typeof first.intent === "object" ? first.intent : null;
+      const display = intent && intent.display && typeof intent.display === "object" ? intent.display : null;
+      const options = Array.isArray(first.options) ? first.options : [];
+      const meta = [
+        questions.length > 1 ? "+" + (questions.length - 1) : "",
+        options.length ? options.length + " 个选项" : "",
+      ].filter(Boolean).join(" · ");
       if (pending.kind === "plan-review") {
         const detail = plain(first.detail || first.question || "");
         return {
           kind: "plan_review",
           state: "plan_review",
           label: "计划待审",
-          text: detail ? snippet(detail, 180) : (first.question || "计划待审"),
-          meta: questions.length > 1 ? "+" + (questions.length - 1) : "",
+          text: detail ? snippet(detail, 160) + " · 批准后才开始执行" : (first.question || "计划待审"),
+          meta: meta,
+        };
+      }
+      if (intent && intent.kind === "approval") {
+        const question = plain(localizedText(display && display.question) || first.question || "");
+        const detail = plain(localizedText(display && display.detail));
+        return {
+          kind: "approval",
+          state: "approving",
+          label: "等你批准",
+          text: snippet([question, detail].filter(Boolean).join(" · ") || "请求批准", 160),
+          meta: meta,
         };
       }
       return {
@@ -361,8 +413,8 @@ body[data-ds-dark-theme] .kb{
         state: "asking",
         label: "等你回答",
         text: snippet(first.question || "会话中有待回答的问题", 200),
-        meta: questions.length > 1 ? "+" + (questions.length - 1) : "",
-        options: Array.isArray(first.options) ? first.options : [],
+        meta: meta,
+        options: options,
       };
     }
 
@@ -426,7 +478,10 @@ body[data-ds-dark-theme] .kb{
       const badges = [];
       if (ctx.newResult) badges.push({ text: "新结果", tone: "new" });
       if (card.titleStale) badges.push({ text: "新指令", tone: "stale" });
-      else if (card.titleUpdatedAt && card.titleUpdatedAt > ctx.openedAt && card.titleSource === "provider") {
+      else if (card.titleUpdatedAt
+        && card.titleSource === "provider"
+        && card.titleUpdatedAt > ctx.openedAt
+        && Date.now() - card.titleUpdatedAt < 10 * 60 * 1000) {
         badges.push({ text: "任务已更新", tone: "stale" });
       }
       if (card.fork) badges.push({ text: "Fork", tone: "fork" });
@@ -715,7 +770,11 @@ body[data-ds-dark-theme] .kb{
         }
       }
       if (newest) return newest.id;
-      return blankCount === 1 ? fallback : null;
+      if (blankCount === 1 && fallback) {
+        const row = list.byId[fallback];
+        if (row && Number(row.updatedAt) >= fresh) return fallback;
+      }
+      return null;
     }
 
     function syntheticBlank(id) {
@@ -846,9 +905,11 @@ body[data-ds-dark-theme] .kb{
       const [error, setError] = useState("");
       const [refreshing, setRefreshing] = useState(false);
       const [live, setLive] = useState(false);
+      const [syncing, setSyncing] = useState(false);
       const [query, setQuery] = useState("");
-      const [workspace, setWorkspace] = useState("all");
-      const [days, setDays] = useState(7);
+      const [prefs] = useState(readPrefs);
+      const [workspace, setWorkspace] = useState(prefs.workspace);
+      const [days, setDays] = useState(prefs.days);
       const [limits, setLimits] = useState({ settled: 20 });
       const [historyOpen, setHistoryOpen] = useState(false);
       const [historyLimit, setHistoryLimit] = useState(20);
@@ -867,24 +928,55 @@ body[data-ds-dark-theme] .kb{
       const noticeTimer = useRef(null);
       const boardRef = useRef(null);
       const archivedLoadingRef = useRef(false);
-      const archivedRequestedCount = useRef(-1);
+      const archivedAttemptedCount = useRef(-1);
+      const visibleRequests = useRef(0);
+      const daysRef = useRef(days);
+      useEffect(function () { daysRef.current = days; }, [days]);
+      useEffect(function () {
+        try { localStorage.setItem(PREFS_KEY, JSON.stringify({ days: days, workspace: workspace })); } catch (e) { }
+      }, [days, workspace]);
 
       const statuses = props.statuses || (typeof Map === "function" ? new Map() : {});
       const sessionsList = props.sessionsList;
 
       const readCards = useCallback(async function (force) {
-        setRefreshing(true);
+        const silent = !force && !!boardRef.current;
+        if (!silent) {
+          visibleRequests.current += 1;
+          setRefreshing(true);
+        }
+        const requestDays = days;
         try {
-          const data = await api("/cards?days=" + days + (force ? "&refresh=1" : ""));
-          setBoard(data);
+          const data = await api("/cards?days=" + requestDays + (force ? "&refresh=1" : ""));
+          if (daysRef.current !== requestDays) return;
+          if (data && data.warming === true) {
+            setSyncing(true);
+            if (!boardRef.current) setBoard(data);
+            setFatal("");
+            setError("");
+            return;
+          }
+          setSyncing(false);
+          setBoard(function (previous) {
+            if (previous && previous.days === data.days && previous.warming !== true) {
+              if (previous.revision && previous.revision === data.revision) return previous;
+              if (Number(data.generatedAt) < Number(previous.generatedAt)) return previous;
+            }
+            return data;
+          });
           setFatal("");
           setError("");
         } catch (e) {
+          if (daysRef.current !== requestDays) return;
+          setSyncing(false);
           const message = String((e && e.message) || e);
           if (boardRef.current) setError(message);
           else setFatal(message);
         } finally {
-          setRefreshing(false);
+          if (!silent) {
+            visibleRequests.current = Math.max(0, visibleRequests.current - 1);
+            if (visibleRequests.current === 0) setRefreshing(false);
+          }
         }
       }, [days]);
 
@@ -925,24 +1017,29 @@ body[data-ds-dark-theme] .kb{
 
       useEffect(function () {
         let source = null;
+        const sourceDays = days;
         try {
           source = new EventSource("/task-board-api/events?days=" + days);
           source.addEventListener("cards", function (event) {
             try {
               const patch = JSON.parse(event.data);
+              if (daysRef.current !== sourceDays) return;
               setLive(true);
+              setSyncing(false);
               setBoard(function (previous) {
-                const map = new Map(previous && Array.isArray(previous.cards)
-                  ? previous.cards.map(function (card) { return [card.id, card]; })
-                  : []);
+                const base = patch.full === true || !previous || !Array.isArray(previous.cards)
+                  ? []
+                  : previous.cards;
+                const map = new Map(base.map(function (card) { return [card.id, card]; }));
                 for (const card of patch.upserts || []) map.set(card.id, card);
                 for (const id of patch.removes || []) map.delete(id);
                 return {
                   ...(previous || {}),
                   warming: false,
                   revision: patch.revision,
-                  generatedAt: patch.generatedAt || (previous && previous.generatedAt) || Date.now(),
+                  generatedAt: patch.generatedAt || (previous && previous.generatedAt) || 0,
                   cards: Array.from(map.values()),
+                  days: patch.days === undefined ? ((previous && previous.days) || days) : patch.days,
                   archivedCount: patch.archivedCount === undefined
                     ? (previous && previous.archivedCount) || 0
                     : patch.archivedCount,
@@ -954,7 +1051,7 @@ body[data-ds-dark-theme] .kb{
             } catch (e) { }
           });
           source.onopen = function () { setLive(true); };
-          source.onerror = function () { setLive(false); };
+          source.onerror = function () { setLive(false); setSyncing(false); };
         } catch (e) {
           source = null;
         }
@@ -983,17 +1080,10 @@ body[data-ds-dark-theme] .kb{
         archivedLoadingRef.current = true;
         setArchivedLoading(true);
         setArchivedError("");
-        const boardCount = boardRef.current && typeof boardRef.current.archivedCount === "number"
-          ? boardRef.current.archivedCount
-          : -1;
         try {
           const data = await api("/archived" + (force === true ? "?refresh=1" : ""));
-          const serverCount = typeof data.archivedCount === "number" ? data.archivedCount : boardCount;
           setArchivedItems(Array.isArray(data.cards) ? data.cards : []);
-          setArchivedCountAtLoad(boardCount >= 0 ? serverCount : -1);
-          if (force !== true && boardCount >= 0 && serverCount !== boardCount) {
-            archivedRequestedCount.current = serverCount;
-          }
+          setArchivedCountAtLoad(typeof data.archivedCount === "number" ? data.archivedCount : -1);
         } catch (e) {
           setArchivedError("归档加载失败：" + String((e && e.message) || e));
         } finally {
@@ -1005,16 +1095,17 @@ body[data-ds-dark-theme] .kb{
       const toggleArchived = useCallback(function () {
         if (archivedOpen) { setArchivedOpen(false); return; }
         setArchivedOpen(true);
+        setArchivedCountAtLoad(-1);
+        archivedAttemptedCount.current = -1;
       }, [archivedOpen]);
 
       useEffect(function () {
-        if (!archivedOpen || archivedError) return;
+        if (!archivedOpen || archivedError || archivedLoading) return;
         const count = board && typeof board.archivedCount === "number" ? board.archivedCount : -1;
-        if (archivedCountAtLoad === count) return;
-        if (archivedRequestedCount.current === count) return;
-        archivedRequestedCount.current = count;
+        if (count < 0 || archivedCountAtLoad === count || archivedAttemptedCount.current === count) return;
+        archivedAttemptedCount.current = count;
         loadArchived(archivedItems.length > 0);
-      }, [archivedOpen, archivedError, archivedItems.length, archivedCountAtLoad, board, loadArchived]);
+      }, [archivedOpen, archivedError, archivedLoading, archivedItems.length, archivedCountAtLoad, board, loadArchived]);
 
       const hostReady = board && board.warming !== true;
       const allCards = hostReady && Array.isArray(board.cards)
@@ -1052,7 +1143,7 @@ body[data-ds-dark-theme] .kb{
         const effective = Object.assign({}, card, { state: state });
         const lane = laneOf(effective, pending);
         const view = {
-          title: card.title || "未命名会话",
+          title: plain(card.title) || "未命名会话",
           status: statusText(effective, pending, lane, now),
           evidence: evidenceOf(effective, pending, now),
           meta: stateMeta(state),
@@ -1077,9 +1168,16 @@ body[data-ds-dark-theme] .kb{
         workspaceOptions.push({ key: key, label: label });
       }
       workspaceOptions.sort(function (a, b) { return a.label.localeCompare(b.label, "zh-CN"); });
+      const workspaceMissing = hostReady
+        && workspace !== "all"
+        && !workspaceOptions.some(function (option) { return option.key === workspace; });
+      const workspaceActive = hostReady && !workspaceMissing && workspace !== "all";
+      useEffect(function () {
+        if (hostReady && workspaceMissing) setWorkspace("all");
+      }, [hostReady, workspaceMissing]);
 
       const filtered = decorated.filter(function (item) {
-        if (workspace !== "all") {
+        if (workspaceActive) {
           const key = item.card.workspace && item.card.workspace.id ? item.card.workspace.id : "ungrouped";
           if (key !== workspace) return false;
         }
@@ -1114,7 +1212,7 @@ body[data-ds-dark-theme] .kb{
         const aWait = a.state === "scheduled" || a.state === "goal_waiting" ? 1 : 0;
         const bWait = b.state === "scheduled" || b.state === "goal_waiting" ? 1 : 0;
         if (aWait !== bWait) return aWait - bWait;
-        if (!aWait) return (a.card.activity.runningSince || 0) - (b.card.activity.runningSince || 0);
+        if (!aWait) return ((a.card.activity || {}).runningSince || 0) - ((b.card.activity || {}).runningSince || 0);
         return (a.card.updatedAt || 0) - (b.card.updatedAt || 0);
       });
       byLane.settled.sort(function (a, b) {
@@ -1172,11 +1270,11 @@ body[data-ds-dark-theme] .kb{
       }
 
       const counts = { needs: byLane.needs.length, working: byLane.working.length, settled: byLane.settled.length };
-      const newCount = decorated.filter(function (item) { return item.newResult; }).length;
-      const workspaceLabel = workspace === "all" ? "全部工作区" : (workspaceOptions.find(function (option) { return option.key === workspace; }) || {}).label || "工作区";
+      const newCount = filtered.filter(function (item) { return item.newResult; }).length;
+      const workspaceLabel = (!hostReady || workspace === "all" || workspaceMissing) ? "全部工作区" : (workspaceOptions.find(function (option) { return option.key === workspace; }) || {}).label || "工作区";
       const total = counts.needs + counts.working + counts.settled;
       const warming = !!(board && board.warming);
-      const titleHint = board && board.titleFollow === false && total >= 3;
+      const titleHint = board && board.titleFollow !== true && total >= 3;
 
       return h("div", { className: "kb", "data-testid": "task-board" },
         h("header", { className: "kb-head" },
@@ -1187,7 +1285,7 @@ body[data-ds-dark-theme] .kb{
               h("p", { className: "kb-sub" },
                 "每个 DSH 会话自动成为一张卡片",
                 h("span", { className: "kb-readonly" }, "只读"),
-                h("span", { className: "kb-livestate", "data-live": live && !warming ? "true" : "false" }, h("i"), warming ? "同步中" : live ? "实时" : "轮询")
+                h("span", { className: "kb-livestate", "data-live": live && !warming && !syncing ? "true" : "false" }, h("i"), (warming || syncing) ? "同步中" : live ? "实时" : "轮询")
               )
             ),
             h("div", { className: "kb-headtools" },
@@ -1215,7 +1313,7 @@ body[data-ds-dark-theme] .kb{
               ),
               h("select", {
                 className: "kb-select",
-                value: workspace,
+                value: (hostReady && !workspaceMissing) ? workspace : "all",
                 "aria-label": "按工作区筛选",
                 onChange: function (event) { setWorkspace(event.target.value); },
               },
@@ -1244,7 +1342,7 @@ body[data-ds-dark-theme] .kb{
             h("span", { className: "kb-stat" }, h("span", null, workspaceLabel))
           )
         ),
-        (error || fatal) ? h("div", { className: "kb-banner", "data-kind": "error", role: "status" },
+        (error || (fatal && allCards.length > 0)) ? h("div", { className: "kb-banner", "data-kind": "error", role: "status" },
           h(Icon, { name: "alert", size: 14 }),
           h("span", null, fatal
             ? "读取失败：" + fatal + "。先显示本地会话摘要。"
@@ -1365,7 +1463,7 @@ body[data-ds-dark-theme] .kb{
                     const pending = null;
                     const effective = card;
                     const view = {
-                      title: card.title || "未命名会话",
+                      title: plain(card.title) || "未命名会话",
                       status: { label: "已归档", time: card.updatedAt ? relative(card.updatedAt, now) : "" },
                       evidence: { kind: "muted", text: "需在 DSH 侧栏恢复后才能打开。" },
                       meta: stateMeta("archived"),
@@ -1375,8 +1473,7 @@ body[data-ds-dark-theme] .kb{
                   }),
                   onToggleArchived: toggleArchived,
                   onRetryArchived: function () {
-                    const count = board && typeof board.archivedCount === "number" ? board.archivedCount : -1;
-                    archivedRequestedCount.current = count;
+                    archivedAttemptedCount.current = -1;
                     loadArchived(true);
                   },
                 });

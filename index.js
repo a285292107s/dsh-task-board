@@ -13,20 +13,19 @@ const DETAIL_TTL_MS = 12000;
 const ACTIVITY_TTL_MS = 5000;
 const ACTIVITY_TIMEOUT_MS = 1200;
 const TITLE_CHANGE_GRACE_MS = 5000;
+const DETAIL_CACHE_LIMIT = 32;
+const ACTIVITY_CACHE_LIMIT = 64;
+const MAX_SNAPSHOT_KEYS = 6;
 
 function asText(value, max) {
   if (value === null || value === undefined) return '';
   return String(value).slice(0, max || 4000);
 }
 
-function firstLine(value, max) {
-  const text = asText(value, max || 4000).replace(/\s+/g, ' ').trim();
-  return text;
-}
-
 function snippet(value, max) {
-  const text = firstLine(value, max || 160);
-  return text.length > (max || 160) ? text.slice(0, max || 160) + '…' : text;
+  const limit = max || 160;
+  const text = asText(value, limit + 1).replace(/\s+/g, ' ').trim();
+  return text.length > limit ? text.slice(0, limit) + '…' : text;
 }
 
 function asInt(value, fallback) {
@@ -85,6 +84,13 @@ async function mapLimit(items, limit, mapper) {
   });
   await Promise.all(workers);
   return output;
+}
+
+function trimCache(cache, limit) {
+  while (cache.size > limit) {
+    const oldest = cache.keys().next().value;
+    cache.delete(oldest);
+  }
 }
 
 function summaryTitle(summary) {
@@ -188,8 +194,20 @@ async function listSummaries(ctx) {
   }
   const query = getService(ctx, 'sessionQuery');
   if (query && typeof query.listSessions === 'function') {
-    const records = await query.listSessions();
-    const items = (Array.isArray(records) ? records : []).map((record) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), LIST_TIMEOUT_MS);
+    if (timer && typeof timer.unref === 'function') timer.unref();
+    let records;
+    try {
+      records = await query.listSessions(controller.signal);
+    } catch (e) {
+      if (controller.signal.aborted) throw new Error('会话列表读取超时');
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!Array.isArray(records)) throw new Error('会话列表读取超时');
+    const items = records.map((record) => {
       const header = record && record.header ? record.header : {};
       return listFields({
         sessionId: header.id,
@@ -208,30 +226,23 @@ async function listSummaries(ctx) {
   throw new Error('宿主没有可用的会话列表服务');
 }
 
-async function listSummariesCached(ctx, caches, maxAgeMs) {
-  if (maxAgeMs > 0 && caches.summaries && Date.now() - caches.summaries.at <= maxAgeMs) {
-    return caches.summaries;
+async function listSummariesCached(ctx, caches, maxAgeMs, force) {
+  const cached = caches.summaries;
+  const effectiveMaxAge = cached && cached.source === 'sessionQuery' ? Math.min(maxAgeMs, 1500) : maxAgeMs;
+  if (!force && effectiveMaxAge > 0 && cached && Date.now() - cached.at <= effectiveMaxAge) {
+    return cached;
   }
-  const listed = await listSummaries(ctx);
-  caches.summaries = { at: Date.now(), items: listed.items, source: listed.source };
-  return caches.summaries;
-}
-
-async function readTitleSnapshots(ctx, ids) {
-  const query = getService(ctx, 'sessionQuery');
-  if (!query || typeof query.readTitleSnapshots !== 'function' || !ids.length) return new Map();
-  try {
-    const results = await withTimeout(query.readTitleSnapshots(ids), 800, []);
-    const map = new Map();
-    for (const result of Array.isArray(results) ? results : []) {
-      if (!result || result.status !== 'fulfilled' || !result.value) continue;
-      map.set(String(result.sessionId), result.value);
-    }
-    return map;
-  } catch (e) {
-    logWarn(ctx, '标题快照读取失败：' + String((e && e.message) || e));
-    return new Map();
-  }
+  if (caches.summaryPending) return caches.summaryPending;
+  const task = listSummaries(ctx)
+    .then((listed) => {
+      caches.summaries = { at: Date.now(), items: listed.items, source: listed.source };
+      return caches.summaries;
+    })
+    .finally(() => {
+      if (caches.summaryPending === task) caches.summaryPending = null;
+    });
+  caches.summaryPending = task;
+  return task;
 }
 
 function buildChildIndex(items) {
@@ -406,8 +417,23 @@ function reasonState(reason) {
   return null;
 }
 
-function titleInfo(summary, titleSnapshot, observation) {
-  const snapshot = titleSnapshot && titleSnapshot.title ? titleSnapshot.title : null;
+function titleSnapshotFromEvents(events) {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (!event || event.type !== 'session/title' || !event.data) continue;
+    const source = event.data.source;
+    if (typeof event.data.title !== 'string' || !source || typeof source.kind !== 'string') continue;
+    return {
+      title: event.data.title,
+      messageSeqs: Array.isArray(event.data.messageSeqs) ? event.data.messageSeqs : [],
+      source,
+      updatedAt: Number.isFinite(Number(event.time)) ? Number(event.time) : null,
+    };
+  }
+  return null;
+}
+
+function titleInfo(summary, snapshot, observation) {
   const outline = observation && observation.projections && observation.projections.values
     ? observation.projections.values.turnOutline
     : null;
@@ -416,6 +442,9 @@ function titleInfo(summary, titleSnapshot, observation) {
     ? snapshot.title
     : (summary.title || (summary.blank ? '新会话' : firstPrompt ? snippet(firstPrompt, 40) : '未命名会话'));
   const source = snapshot && snapshot.source && snapshot.source.kind ? snapshot.source.kind : (summary.title ? 'unknown' : 'provisional');
+  const provider = snapshot && snapshot.source && snapshot.source.kind === 'provider'
+    ? String(snapshot.source.provider || '')
+    : null;
   const coveredThrough = snapshot && Array.isArray(snapshot.messageSeqs) && snapshot.messageSeqs.length
     ? Math.max(...snapshot.messageSeqs)
     : null;
@@ -433,6 +462,7 @@ function titleInfo(summary, titleSnapshot, observation) {
     titleUpdatedAt: updatedAt,
     titleCoveredThrough: coveredThrough,
     titleStale: stale,
+    provider,
     provisional: !snapshot,
   };
 }
@@ -441,13 +471,13 @@ function stateFor(summary, lastTurn, activity, children, goal) {
   if (summary.blank) return 'blank';
   if (lastTurn && lastTurn.openStart) return 'running';
   if (activity.running || summary.running) return 'running';
-  if (children.count > 0) return 'subagent';
-  if (activity.jobs > 0) return 'job';
-  if (activity.scheduled > 0) return 'scheduled';
   const reason = lastTurn && lastTurn.reason;
   const reasonKind = reasonState(reason);
   if (reasonKind === 'failed' || reasonKind === 'blocked' || reasonKind === 'interrupted' || reasonKind === 'max_tokens') return reasonKind;
   if (goal && goal.phase === 'blocked') return 'blocked';
+  if (children.count > 0) return 'subagent';
+  if (activity.jobs > 0) return 'job';
+  if (activity.scheduled > 0) return 'scheduled';
   if (goal && goal.phase === 'active') return 'goal_waiting';
   if (goal && goal.phase === 'paused') return 'goal_paused';
   if (goal && goal.phase === 'complete') return 'goal_complete';
@@ -514,27 +544,57 @@ function compactCard(summary, title, workspace, pinned, fork, archived) {
   };
 }
 
+async function readObservation(query, sessionId, signal) {
+  const observation = await query.observeSession(sessionId, { projectionMode: 'all', signal });
+  const release = typeof observation[Symbol.dispose] === 'function'
+    ? observation[Symbol.dispose].bind(observation)
+    : null;
+  try {
+    return {
+      header: observation.header,
+      events: Array.isArray(observation.events) ? observation.events : [],
+      projections: observation.projections ? { values: observation.projections.values } : undefined,
+    };
+  } finally {
+    try {
+      if (release) release();
+    } catch (e) { }
+  }
+}
+
+async function observeWithTimeout(query, sessionId, ms) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  if (timer && typeof timer.unref === 'function') timer.unref();
+  try {
+    return await readObservation(query, sessionId, controller.signal);
+  } catch (e) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function buildCard(ctx, summary, context) {
   const {
     index,
-    titleSnapshot,
     children,
     parentTitles,
     includeArchived,
     detailCache,
     activityCache,
+    titleFollow,
     now,
   } = context;
   const archived = index.archived.has(summary.id);
   if (includeArchived !== archived) return null;
   const workspace = workspaceFor(summary, index);
   const pinned = index.pinned.has(summary.id);
-  const header = titleSnapshot && titleSnapshot.session ? titleSnapshot.session : null;
-  const forkParentId = header && header.parentSession ? String(header.parentSession) : (summary.parentSessionId || null);
-  const fork = forkParentId && summary.origin !== 'subagent'
+  const forkParentId = summary.parentSessionId || null;
+  let fork = forkParentId && summary.origin !== 'subagent'
     ? { parentId: forkParentId, parentTitle: parentTitles.get(forkParentId) || '' }
     : null;
-  const emptyTitle = titleInfo(summary, titleSnapshot, null);
+  const emptyTitle = titleInfo(summary, null, null);
 
   if (archived) {
     const card = compactCard(summary, emptyTitle, workspace, pinned, fork, true);
@@ -551,17 +611,10 @@ async function buildCard(ctx, summary, context) {
     } else {
       const query = getService(ctx, 'sessionQuery');
       if (query && typeof query.observeSession === 'function') {
-        try {
-          observation = await withTimeout(
-            query.observeSession(summary.id, { projectionMode: 'all' }),
-            1200,
-            null,
-          );
-        } catch (e) {
-          observation = null;
-        }
+        observation = await observeWithTimeout(query, summary.id, 1200);
       }
       detailCache.set(summary.id, { at: now, updatedAt: summary.updatedAt, observation });
+      trimCache(detailCache, DETAIL_CACHE_LIMIT);
     }
   }
   if (!shouldReadDetail || !observation) {
@@ -571,7 +624,15 @@ async function buildCard(ctx, summary, context) {
     return card;
   }
 
-  const title = titleInfo(summary, titleSnapshot, observation);
+  const events = Array.isArray(observation.events) ? observation.events : [];
+  if (!fork && summary.origin !== 'subagent' && observation.header && observation.header.isSeeded === true) {
+    fork = { parentId: null, parentTitle: '' };
+  }
+  const title = titleInfo(summary, titleSnapshotFromEvents(events), observation);
+  if (title.provider) {
+    titleFollow.seen = true;
+    if (title.provider.includes('all-prompts')) titleFollow.allPrompts = true;
+  }
   let activity = { running: summary.running, subagents: 0, jobs: 0, scheduled: 0, labels: [] };
   if (summary.agentAvailable) {
     const cached = activityCache.get(summary.id);
@@ -586,12 +647,12 @@ async function buildCard(ctx, summary, context) {
         labels: [...new Set([...value.labels, ...children.labels])].slice(0, 4),
       };
       activityCache.set(summary.id, { at: now, value: activity });
+      trimCache(activityCache, ACTIVITY_CACHE_LIMIT);
     }
   } else {
     activity = { ...activity, subagents: children.count, labels: children.labels.slice(0, 3) };
   }
 
-  const events = observation && Array.isArray(observation.events) ? observation.events : [];
   const lastTurn = lastTurnInfo(events);
   const projections = observation && observation.projections && observation.projections.values
     ? observation.projections.values
@@ -669,19 +730,14 @@ function snapshotRevision(cards, archivedCount) {
     .digest('hex');
 }
 
-function titleFollowOf(titleSnapshots) {
-  const sources = [];
-  for (const observation of titleSnapshots.values()) {
-    const source = observation && observation.title && observation.title.source;
-    if (source && source.kind === 'provider') sources.push(String(source.provider || ''));
-  }
-  if (!sources.length) return null;
-  return sources.some((provider) => provider.includes('all-prompts'));
-}
-
-async function buildSnapshot(ctx, includeArchived, caches, days) {
+async function buildSnapshot(ctx, includeArchived, caches, days, force) {
   const now = Date.now();
-  const listed = await listSummariesCached(ctx, caches, includeArchived ? ARCHIVED_SUMMARY_TTL_MS : 0);
+  const listed = await listSummariesCached(
+    ctx,
+    caches,
+    includeArchived ? ARCHIVED_SUMMARY_TTL_MS : SNAPSHOT_TTL_MS,
+    force,
+  );
   const items = listed.items.filter((item) => item.id);
   const index = readWorkspaceIndex(ctx);
   const nonSubagent = items.filter((item) => item.origin !== 'subagent' && item.blank !== true);
@@ -689,7 +745,7 @@ async function buildSnapshot(ctx, includeArchived, caches, days) {
   const selected = nonSubagent.filter((item) => {
     if (includeArchived) return index.archived.has(item.id);
     if (index.archived.has(item.id)) return false;
-    if (!windowMs) return true;
+    if (!windowMs || listed.source === 'sessionQuery') return true;
     return item.updatedAt >= now - windowMs || item.agentAvailable;
   });
   const rich = new Set();
@@ -702,34 +758,34 @@ async function buildSnapshot(ctx, includeArchived, caches, days) {
       if (item.updatedAt > now - DETAIL_WINDOW_MS) rich.add(item.id);
     }
   }
-  const titleSnapshots = includeArchived
-    ? new Map()
-    : await readTitleSnapshots(ctx, selected.filter((item) => rich.has(item.id)).map((item) => item.id));
   const childrenIndex = buildChildIndex(items);
   const parentTitles = new Map();
   for (const item of items) parentTitles.set(item.id, item.title || '');
+  const titleFollow = { seen: false, allPrompts: false };
   const cards = (await mapLimit(selected, 8, (summary) => buildCard(ctx, summary, {
     index,
-    titleSnapshot: titleSnapshots.get(summary.id) || null,
     children: childChildren(childrenIndex, summary.id),
     parentTitles,
     includeArchived,
     detail: rich.has(summary.id),
     detailCache: caches.detail,
     activityCache: caches.activity,
+    titleFollow,
     now,
   }))).filter(Boolean);
   cards.sort((left, right) => {
     if (left.archived !== right.archived) return left.archived ? 1 : -1;
     return (right.updatedAt || 0) - (left.updatedAt || 0);
   });
-  const archivedCount = index.archived.size;
+  const archivedCount = items.filter((item) => (
+    item.origin !== 'subagent' && item.blank !== true && index.archived.has(item.id)
+  )).length;
   return {
     revision: snapshotRevision(cards, archivedCount),
     generatedAt: Date.now(),
     cards,
     archivedCount,
-    titleFollow: titleFollowOf(titleSnapshots),
+    titleFollow: titleFollow.seen ? titleFollow.allPrompts : null,
     source: listed.source,
     days: days > 0 ? days : 0,
   };
@@ -743,21 +799,30 @@ function childChildren(index, parentId) {
 function makeSnapshotCache(ctx) {
   const cache = new Map();
   const failures = new Map();
-  const caches = { detail: new Map(), activity: new Map(), summaries: null };
+  const caches = { detail: new Map(), activity: new Map(), summaries: null, summaryPending: null };
   const pending = new Map();
 
-  function startBuild(key, includeArchived, days) {
+  function startBuild(key, includeArchived, days, force) {
     if (pending.has(key)) return pending.get(key);
-    const task = buildSnapshot(ctx, includeArchived, caches, days)
+    const task = buildSnapshot(ctx, includeArchived, caches, days, force)
       .then((value) => {
         failures.delete(key);
+        cache.delete(key);
         cache.set(key, {
           at: Date.now(),
           value,
           degraded: value && value.source === 'sessionQuery',
         });
+        if (cache.size > MAX_SNAPSHOT_KEYS) {
+          const keys = [...cache.keys()];
+          const victim = keys.find((candidate) => candidate !== 'archived' && candidate !== key)
+            || keys.find((candidate) => candidate !== 'archived')
+            || keys[0];
+          cache.delete(victim);
+          failures.delete(victim);
+        }
         if (!includeArchived && !cache.has('archived') && !pending.has('archived')) {
-          startBuild('archived', true, 0).catch(() => undefined);
+          startBuild('archived', true, 0, false).catch(() => undefined);
         }
         return value;
       })
@@ -776,14 +841,14 @@ function makeSnapshotCache(ctx) {
     if (!force && current) {
       const ttl = current.degraded ? 1500 : SNAPSHOT_TTL_MS;
       const stale = Date.now() - current.at >= ttl;
-      if (stale) startBuild(key, includeArchived, days).catch(() => undefined);
+      if (stale) startBuild(key, includeArchived, days, false).catch(() => undefined);
       return stale ? { ...current.value, stale: true } : current.value;
     }
-    if (force) return startBuild(key, includeArchived, days);
+    if (force) return startBuild(key, includeArchived, days, true);
     const failed = failures.get(key);
     if (failed && Date.now() - failed.at < 2000) throw new Error(failed.message);
     if (failed) failures.delete(key);
-    startBuild(key, includeArchived, days).catch(() => undefined);
+    startBuild(key, includeArchived, days, false).catch(() => undefined);
     return {
       revision: '',
       generatedAt: Date.now(),
@@ -803,7 +868,7 @@ function writeEvent(res, event, data) {
   res.write('data: ' + JSON.stringify(data) + '\n\n');
 }
 
-async function handleEvents(ctx, req, res, getSnapshot, days) {
+async function handleEvents(ctx, req, res, getSnapshot, days, streams) {
   res.writeHead(200, {
     'content-type': 'text/event-stream; charset=utf-8',
     'cache-control': 'no-store, no-transform',
@@ -812,6 +877,7 @@ async function handleEvents(ctx, req, res, getSnapshot, days) {
   });
   if (typeof res.flushHeaders === 'function') res.flushHeaders();
   res.write('retry: 3000\n\n');
+  streams.add(res);
   let closed = false;
   let lastCards = new Map();
   let lastRevision = '';
@@ -822,6 +888,7 @@ async function handleEvents(ctx, req, res, getSnapshot, days) {
   const close = () => {
     if (closed) return;
     closed = true;
+    streams.delete(res);
     if (timer) clearInterval(timer);
     if (heartbeat) clearInterval(heartbeat);
   };
@@ -834,6 +901,10 @@ async function handleEvents(ctx, req, res, getSnapshot, days) {
     try {
       const snapshot = await getSnapshot(false, false, days);
       if (snapshot.warming) return;
+      const metaChanged = snapshot.revision !== lastRevision
+        || snapshot.archivedCount !== lastArchivedCount
+        || snapshot.titleFollow !== lastTitleFollow;
+      if (!metaChanged) return;
       const next = new Map();
       const upserts = [];
       for (const card of snapshot.cards) {
@@ -842,23 +913,20 @@ async function handleEvents(ctx, req, res, getSnapshot, days) {
         if (lastCards.get(card.id) !== serialized) upserts.push(card);
       }
       const removes = [...lastCards.keys()].filter((id) => !next.has(id));
-      const metaChanged = snapshot.revision !== lastRevision
-        || snapshot.archivedCount !== lastArchivedCount
-        || snapshot.titleFollow !== lastTitleFollow;
-      if (metaChanged || upserts.length || removes.length) {
-        writeEvent(res, 'cards', {
-          revision: snapshot.revision,
-          generatedAt: snapshot.generatedAt,
-          upserts,
-          removes,
-          archivedCount: snapshot.archivedCount,
-          titleFollow: snapshot.titleFollow,
-        });
-        lastCards = next;
-        lastRevision = snapshot.revision;
-        lastArchivedCount = snapshot.archivedCount;
-        lastTitleFollow = snapshot.titleFollow;
-      }
+      writeEvent(res, 'cards', {
+        full: lastRevision === '',
+        revision: snapshot.revision,
+        generatedAt: snapshot.generatedAt,
+        upserts,
+        removes,
+        archivedCount: snapshot.archivedCount,
+        titleFollow: snapshot.titleFollow,
+        days: days > 0 ? days : 0,
+      });
+      lastCards = next;
+      lastRevision = snapshot.revision;
+      lastArchivedCount = snapshot.archivedCount;
+      lastTitleFollow = snapshot.titleFollow;
     } catch (e) {
       writeEvent(res, 'error', { error: String((e && e.message) || e) });
     }
@@ -873,6 +941,7 @@ async function handleEvents(ctx, req, res, getSnapshot, days) {
 
 export function apply(ctx) {
   const getSnapshot = makeSnapshotCache(ctx);
+  const streams = new Set();
 
   async function handleRequest(req, res) {
     const url = new URL(req.url || '/', 'http://127.0.0.1');
@@ -880,6 +949,7 @@ export function apply(ctx) {
     const method = (req.method || 'GET').toUpperCase();
     try {
       if (method !== 'GET') {
+        res.setHeader('allow', 'GET');
         return json(res, 405, { ok: false, error: 'read only' });
       }
       if (sub === '/health') {
@@ -898,7 +968,7 @@ export function apply(ctx) {
       }
       if (sub === '/events') {
         const days = Math.max(0, Math.min(3650, asInt(url.searchParams.get('days'), 0)));
-        return await handleEvents(ctx, req, res, getSnapshot, days);
+        return await handleEvents(ctx, req, res, getSnapshot, days, streams);
       }
       return json(res, 404, { ok: false, error: 'not found', path: sub });
     } catch (e) {
@@ -911,6 +981,15 @@ export function apply(ctx) {
     path: ROUTE_PREFIX,
     handler: handleRequest,
   }), 'dsh-task-board: read-only api');
+
+  ctx.effect(() => {
+    return () => {
+      for (const res of streams) {
+        try { res.end(); } catch (e) { }
+      }
+      streams.clear();
+    };
+  }, 'dsh-task-board: close event streams');
 
   ctx.effect(() => {
     let timer = null;

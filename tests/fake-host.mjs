@@ -56,21 +56,25 @@ const events = {
   s1: [
     { type: 'turn/start', seq: 1, time: now - 12 * MIN, data: { turn: 1 } },
     { type: 'user/message', seq: 2, time: now - 12 * MIN, data: {} },
-    { type: 'tool/call', seq: 3, time: now - 8 * MIN, data: { name: 'bash', arguments: JSON.stringify({ command: 'pnpm test' }) } },
+    { type: 'session/title', seq: 3, time: now - 30 * 1000, data: { title: titles.s1, messageSeqs: [2], source: { kind: 'provider', provider: 'session-title-all-prompts-llm' } } },
+    { type: 'tool/call', seq: 4, time: now - 8 * MIN, data: { name: 'bash', arguments: JSON.stringify({ command: 'pnpm test' }) } },
   ],
   s2: [
     { type: 'turn/start', seq: 1, time: now - 3 * MIN, data: { turn: 1 } },
     { type: 'turn/end', seq: 2, time: now - 2 * MIN, data: { turn: 1, reason: { kind: 'error', error: { message: 'TypeScript: Cannot find module @/lib/env' } } } },
+    { type: 'session/title', seq: 3, time: now - 10 * MIN, data: { title: titles.s2, messageSeqs: [1], source: { kind: 'provider', provider: 'session-title-all-prompts-llm' } } },
   ],
   s3: [
     { type: 'turn/start', seq: 1, time: now - 10 * MIN, data: { turn: 1 } },
     { type: 'turn/end', seq: 2, time: now - 4 * MIN, data: { turn: 1, reason: { kind: 'completed' } } },
+    { type: 'session/title', seq: 3, time: now - 6 * MIN, data: { title: titles.s3, messageSeqs: [], source: { kind: 'user' } } },
   ],
   s5: [],
   s8: [],
   s9: [
     { type: 'turn/start', seq: 1, time: now - HOUR, data: { turn: 1 } },
     { type: 'turn/end', seq: 2, time: now - 50 * MIN, data: { turn: 1, reason: { kind: 'completed' } } },
+    { type: 'session/title', seq: 3, time: now - 50 * MIN, data: { title: titles.s9, messageSeqs: [1], source: { kind: 'provider', provider: 'session-title-all-prompts-llm' } } },
   ],
   s10: [],
 };
@@ -97,7 +101,7 @@ const items = [
   summary('s5', { title: null, blank: true, updatedAt: now - 30 * 1000 }),
   summary('s6', { title: titles.s6, updatedAt: now - 3 * DAY }),
   summary('s7', { title: '子代理 s7', origin: 'subagent', parent: 's1', running: true, updatedAt: now - MIN }),
-  summary('s8', { title: titles.s8, updatedAt: now - 30 * DAY }),
+  summary('s8', { title: titles.s8, updatedAt: now - 30 * DAY, agentAvailable: false }),
   summary('s9', { title: titles.s9, updatedAt: now - 50 * MIN }),
   summary('s10', {
     title: titles.s10,
@@ -109,15 +113,17 @@ const items = [
       updatedAt: now - 5 * MIN,
     },
   }),
+  summary('s11', { title: '归档子代理', origin: 'subagent', parent: 's1', updatedAt: now - DAY, extraProjections: { subagentTiming: null } }),
 ];
 const activity = {
   s1: [{ kind: 'turn' }, { kind: 'subagent', items: [{ id: 's7', label: '子代理 s7' }] }],
+  s2: [{ kind: 'job', items: [{ id: 'job-1', label: '构建任务' }] }],
   s9: [{ kind: 'schedule', items: [{ id: 'sch1', label: '每周依赖升级' }, { id: 'sch2', label: '周一检查安全公告' }] }],
   s10: [],
 };
 
 function makeCtx(options = {}) {
-  const state = { listCalls: 0 };
+  const state = { listCalls: 0, observations: 0, disposed: 0 };
   const ctx = {
     logger: { warn: (...args) => console.warn('[warn]', ...args) },
     effect: (fn) => { const dispose = fn(); return typeof dispose === 'function' ? dispose : () => {}; },
@@ -133,27 +139,26 @@ function makeCtx(options = {}) {
       }
       if (name === 'sessionQuery') {
         return {
-          listSessions: async () => items.map((item) => ({ header: header(item.sessionId, item.cwd), formatStatus: item.formatStatus })),
-          readTitleSnapshots: async (ids) => ids.map((id) => ({
-            sessionId: id,
-            status: 'fulfilled',
-            value: {
-              session: header(id, 'C:/work/pay'),
-              ...(titles[id] ? {
-                title: {
-                  title: titles[id],
-                  messageSeqs: [1],
-                  source: { kind: 'provider', provider: 'dsh-session-title-all-prompts-llm' },
-                  updatedAt: now - 10 * MIN,
-                },
-              } : {}),
-            },
+          listSessions: async () => items.map((item) => ({
+            header: header(item.sessionId, item.cwd, {
+              createdAt: item.updatedAt,
+              origin: item.origin,
+              parentSession: item.parentSessionId,
+            }),
+            formatStatus: item.formatStatus,
           })),
-          observeSession: async (id) => ({
-            header: header(id, 'C:/work/pay'),
-            events: events[id] || [],
-            projections: { asOfSeq: 1, values: projections[id] || {} },
-          }),
+          readTitleSnapshots: async () => {
+            throw new Error('readTitleSnapshots is not part of the read model');
+          },
+          observeSession: async (id) => {
+            state.observations += 1;
+            return {
+              [Symbol.dispose]() { state.disposed += 1; },
+              header: header(id, 'C:/work/pay'),
+              events: events[id] || [],
+              projections: { asOfSeq: 1, values: projections[id] || {} },
+            };
+          },
         };
       }
       if (name === 'workspaceRegistry') {
@@ -164,7 +169,7 @@ function makeCtx(options = {}) {
             path: 'C:/work/pay',
             sessionIds: items.map((item) => item.sessionId),
           }],
-          archivedSessionIds: ['s6'],
+          archivedSessionIds: ['s6', 's11'],
           pinnedSessionIds: ['s3'],
         };
       }
@@ -210,6 +215,15 @@ function request(ctx, method, pathname) {
 async function getJson(ctx, pathname) {
   const response = await request(ctx, 'GET', pathname);
   return { response, json: JSON.parse(response.body) };
+}
+
+async function waitFor(check, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (check()) return true;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return check();
 }
 
 const ctx = makeCtx();
@@ -258,6 +272,7 @@ assert.equal(ctx.registration.path, '/task-board-api');
   assert.deepEqual(byId.get('s1').activity.labels, ['子代理 s7'], 'activity labels are deduped');
 
   assert.equal(byId.get('s2').state, 'failed');
+  assert.equal(byId.get('s2').activity.jobs, 1, '失败不会因为后台任务而退回「进行中」');
   assert.match(byId.get('s2').outcome.error, /Cannot find module/);
   assert.equal(byId.get('s2').titleStale, true, 'title snapshot is older than the latest prompt');
 
@@ -275,6 +290,16 @@ assert.equal(ctx.registration.path, '/task-board-api');
 
   assert.equal(byId.get('s10').state, 'blocked');
   assert.match(byId.get('s10').goal.blockedReason, /停用旧网关/);
+
+  assert.equal(byId.get('s1').titleSource, 'provider');
+  assert.equal(byId.get('s1').provisional, false);
+  assert.equal(byId.get('s1').titleStale, false);
+  assert.equal(byId.get('s2').titleStale, true, '标题早于最后一条人类指令');
+  assert.equal(byId.get('s3').titleSource, 'user', '用户 pin 的标题来自 session/title 事件');
+  assert.equal(byId.get('s10').provisional, true, '没有 session/title 事件时回退列表标题');
+  assert.equal(byId.get('s10').title, titles.s10);
+  assert.ok(ctx.state.observations > 0);
+  assert.equal(ctx.state.disposed, ctx.state.observations, 'observation 租约用完即释放');
 }
 
 {
@@ -288,9 +313,67 @@ assert.equal(ctx.registration.path, '/task-board-api');
 }
 
 {
+  const warming = await getJson(ctx, '/task-board-api/cards?days=1');
+  assert.equal(warming.json.warming, true);
+  let day1 = null;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const next = await getJson(ctx, '/task-board-api/cards?days=1');
+    if (next.json.warming !== true) { day1 = next; break; }
+  }
+  assert.ok(day1, '1 天窗口快照在后台建好');
+  assert.equal(day1.response.status, 200);
+  assert.equal(day1.json.days, 1);
+  assert.equal(day1.json.cards.some((card) => card.id === 's8'), false, '30 天前的卡不在 1 天窗口内');
+  assert.equal(day1.json.cards.some((card) => card.id === 's1'), true);
+  assert.equal(ctx.state.listCalls, 1, '时间窗口共享 10s 内的会话摘要');
+}
+
+{
+  const { response, json } = await getJson(ctx, '/task-board-api/cards?days=7&refresh=1');
+  assert.equal(response.status, 200);
+  assert.equal(json.warming, undefined);
+  assert.equal(json.cards.length, 5);
+  assert.equal(ctx.state.listCalls, 2, 'refresh=1 重新读会话列表');
+}
+
+{
+  const degraded = makeCtx({ sessionController: false });
+  let snapshot = null;
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const next = await getJson(degraded, '/task-board-api/cards?days=1');
+    if (next.json.warming !== true) { snapshot = next; break; }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.ok(snapshot, '降级快照也能建好');
+  assert.equal(snapshot.json.source, 'sessionQuery');
+  assert.equal(snapshot.json.archivedCount, 1);
+  assert.equal(snapshot.json.cards.some((card) => card.id === 's8'), true, '降级快照不按创建时间裁掉旧会话');
+  assert.equal(snapshot.json.cards.some((card) => card.id === 's5'), true, '降级快照无法识别空白会话');
+}
+
+{
   const response = await request(ctx, 'POST', '/task-board-api/cards');
   assert.equal(response.status, 405);
+  assert.equal(response.headers.allow, 'GET');
   assert.match(response.body, /read only/);
+}
+
+{
+  const ranges = [0, 7, 30, 90];
+  for (const range of ranges) {
+    let built = null;
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const next = await getJson(ctx, '/task-board-api/cards?days=' + range);
+      if (next.json.warming !== true) { built = next; break; }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.ok(built, '时间范围 ' + range + ' 快照可建好');
+  }
+  for (const range of ranges) {
+    const { json } = await getJson(ctx, '/task-board-api/cards?days=' + range);
+    assert.notEqual(json.warming, true, '时间范围 ' + range + ' 与归档快照共同驻留');
+  }
 }
 
 {
@@ -302,7 +385,7 @@ assert.equal(ctx.registration.path, '/task-board-api');
 {
   const req = new EventEmitter();
   req.method = 'GET';
-  req.url = '/task-board-api/events';
+  req.url = '/task-board-api/events?days=7';
   const chunks = [];
   const res = {
     statusCode: 0,
@@ -316,11 +399,15 @@ assert.equal(ctx.registration.path, '/task-board-api');
     on() {},
   };
   const pending = ctx.registration.handler(req, res);
-  await new Promise((resolve) => setTimeout(resolve, 80));
+  await waitFor(() => chunks.join('').includes('event: cards'), 2000);
   assert.equal(res.statusCode, 200);
   const text = chunks.join('');
   assert.match(text, /event: cards/);
+  assert.match(text, /"full":true/, '每个连接的第一帧是全量快照');
+  assert.match(text, /"days":7/, 'SSE 帧带时间窗');
   assert.match(text, /"revision"/);
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+  assert.equal((chunks.join('').match(/event: cards/g) || []).length, 1, '快照未变时不重复推帧');
   req.emit('close');
   res.writableEnded = true;
   await pending;
@@ -346,8 +433,9 @@ assert.equal(ctx.registration.path, '/task-board-api');
   const pending = delayed.registration.handler(req, res);
   await new Promise((resolve) => setTimeout(resolve, 150));
   assert.doesNotMatch(chunks.join(''), /event: cards/, 'SSE 不推送 warming 空快照');
-  await new Promise((resolve) => setTimeout(resolve, 1200));
+  await waitFor(() => chunks.join('').includes('event: cards'), 2500);
   assert.match(chunks.join(''), /event: cards/, '快照就绪后才推送');
+  assert.match(chunks.join(''), /"full":true/, 'warming 后的第一帧标记为全量');
   req.emit('close');
   res.writableEnded = true;
   await pending;
