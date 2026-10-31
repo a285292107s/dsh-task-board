@@ -728,13 +728,20 @@ function childChildren(index, parentId) {
 function makeSnapshotCache(ctx) {
   const cache = { cards: null, archived: null };
   const caches = { detail: new Map(), activity: new Map() };
+  const pending = new Map();
   return async function getSnapshot(includeArchived, force, days) {
     const key = includeArchived ? 'archived' : 'cards:' + (days > 0 ? days : 0);
     const current = cache[key];
     if (!force && current && Date.now() - current.at < SNAPSHOT_TTL_MS) return current.value;
-    const value = await buildSnapshot(ctx, includeArchived, caches, days);
-    cache[key] = { at: Date.now(), value };
-    return value;
+    if (pending.has(key)) return pending.get(key);
+    const task = buildSnapshot(ctx, includeArchived, caches, days)
+      .then((value) => {
+        cache[key] = { at: Date.now(), value };
+        return value;
+      })
+      .finally(() => pending.delete(key));
+    pending.set(key, task);
+    return task;
   };
 }
 
