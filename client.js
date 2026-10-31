@@ -130,6 +130,17 @@ body[data-ds-dark-theme] .kb{
 .kb-ws{display:inline-block;max-width:150px;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom}
 .kb-more{display:block;width:100%;margin-top:2px;padding:7px 9px;border:1px solid var(--line);border-radius:9px;background:color-mix(in srgb,var(--card) 55%,transparent);color:var(--ink2);font-size:11.5px;text-align:center}
 .kb-more:hover{background:var(--card);color:var(--ink)}
+.kb-history{margin-top:4px}
+.kb-hrow{display:grid;grid-template-columns:16px minmax(0,1fr) auto auto;align-items:center;gap:7px;width:100%;padding:6px 8px;border:0;border-radius:7px;background:transparent;color:var(--ink2);font-size:11.5px;line-height:1.35;text-align:left;cursor:pointer}
+.kb-hrow:hover{background:color-mix(in srgb,var(--card) 62%,transparent);color:var(--ink)}
+.kb-hicon{display:flex;align-items:center;justify-content:center;color:var(--ink3)}
+.kb-hicon[data-tone="ok"]{color:var(--soft)}
+.kb-hicon[data-tone="fail"]{color:var(--hi)}
+.kb-hicon[data-tone="work"],.kb-hicon[data-tone="wait"]{color:var(--done)}
+.kb-htitle{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+.kb-hmeta,.kb-hws{color:var(--ink3);white-space:nowrap;font-variant-numeric:tabular-nums}
+.kb-hws{max-width:88px;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:620px){.kb-hrow{grid-template-columns:16px minmax(0,1fr) auto}.kb-hws{display:none}}
 .kb-archrow{display:flex;align-items:center;gap:7px;width:100%;margin-top:3px;padding:8px 9px;border:1px dashed var(--line2);border-radius:9px;background:transparent;color:var(--ink3);font-size:11.5px;text-align:left}
 .kb-archrow:hover{background:color-mix(in srgb,var(--card) 55%,transparent);color:var(--ink2)}
 .kb-archrow span:last-child{margin-left:auto;font-variant-numeric:tabular-nums}
@@ -569,12 +580,33 @@ body[data-ds-dark-theme] .kb{
       );
     }
 
+    function HistoryRow(props) {
+      const item = props.item;
+      const view = item.view;
+      const meta = stateMeta(item.state);
+      const full = view.title + "\n" + (item.card.workspace && item.card.workspace.path ? item.card.workspace.path : "");
+      return h("button", {
+        type: "button",
+        className: "kb-hrow",
+        "data-tone": meta.tone,
+        title: full,
+        "aria-label": view.title + "，" + view.status.label + "，" + view.evidence.text,
+        onClick: function () { props.onOpen(item.card); },
+      },
+        h("span", { className: "kb-hicon", "data-tone": meta.tone }, h(Icon, { name: meta.icon, size: 12 })),
+        h("span", { className: "kb-htitle" }, view.title),
+        h("span", { className: "kb-hmeta" }, view.status.time || view.status.label),
+        h("span", { className: "kb-hws" }, item.card.workspace && item.card.workspace.title ? item.card.workspace.title : "")
+      );
+    }
+
     function Lane(props) {
       const lane = props.lane;
       const sections = props.sections;
       const count = props.count;
       const breakdown = props.breakdown;
       const more = props.more || 0;
+      const historyItems = props.historyItems || [];
       const isSettled = lane.id === "settled";
       return h("section", { className: "kb-lane", "data-lane": lane.id, "aria-label": lane.title },
         h("div", { className: "kb-lanehead" },
@@ -608,17 +640,26 @@ body[data-ds-dark-theme] .kb{
             className: "kb-more",
             onClick: props.onShowMore,
           }, "显示其余 " + more + " 个") : null,
+          isSettled && props.historyOpen && historyItems.length ? h("div", { className: "kb-section kb-history" },
+            h("div", { className: "kb-sechead" },
+              h("span", null, "历史"),
+              h("span", null, String(props.historyCount))
+            ),
+            historyItems.map(function (item) {
+              return h(HistoryRow, { key: item.card.id, item: item, onOpen: props.onOpen });
+            })
+          ) : null,
+          isSettled && props.historyOpen && props.historyMore > 0 ? h("button", {
+            type: "button",
+            className: "kb-more",
+            onClick: props.onMoreHistory,
+          }, "显示其余 " + props.historyMore + " 个历史") : null,
           isSettled && props.historyCount > 0 ? h("button", {
             type: "button",
             className: "kb-more",
             "aria-expanded": props.historyOpen ? "true" : "false",
             onClick: props.onToggleHistory,
           }, props.historyOpen ? "收起历史" : "历史 " + props.historyCount + " 个会话") : null,
-          isSettled && props.historyOpen && props.historyMore > 0 ? h("button", {
-            type: "button",
-            className: "kb-more",
-            onClick: props.onMoreHistory,
-          }, "显示其余 " + props.historyMore + " 个历史") : null,
           isSettled && props.archivedCount > 0
             ? h("div", { className: "kb-section" },
               h("button", {
@@ -802,7 +843,7 @@ body[data-ds-dark-theme] .kb{
       const [query, setQuery] = useState("");
       const [workspace, setWorkspace] = useState("all");
       const [days, setDays] = useState(7);
-      const [limits, setLimits] = useState({ needs: 20, working: 20, settled: 20 });
+      const [limits, setLimits] = useState({ settled: 20 });
       const [historyOpen, setHistoryOpen] = useState(false);
       const [historyLimit, setHistoryLimit] = useState(20);
       const [archivedOpen, setArchivedOpen] = useState(false);
@@ -840,7 +881,7 @@ body[data-ds-dark-theme] .kb{
 
       useEffect(function () { boardRef.current = board; }, [board]);
       useEffect(function () {
-        setLimits({ needs: 20, working: 20, settled: 20 });
+        setLimits({ settled: 20 });
         setHistoryOpen(false);
         setHistoryLimit(20);
       }, [days]);
@@ -1046,6 +1087,7 @@ body[data-ds-dark-theme] .kb{
         return (a.card.updatedAt || 0) - (b.card.updatedAt || 0);
       });
       byLane.settled.sort(function (a, b) {
+        if (a.card.pinned !== b.card.pinned) return a.card.pinned ? -1 : 1;
         if (a.newResult !== b.newResult) return a.newResult ? -1 : 1;
         return (b.card.since || b.card.updatedAt || 0) - (a.card.since || a.card.updatedAt || 0);
       });
@@ -1079,16 +1121,18 @@ body[data-ds-dark-theme] .kb{
             { id: "wait", title: "等待", items: wait },
           ];
         }
-        const fresh = items.filter(function (item) { return item.newResult; });
+        const pinned = items.filter(function (item) { return item.card.pinned; });
+        const fresh = items.filter(function (item) { return !item.card.pinned && item.newResult; });
         const groups = new Map();
         for (const item of items) {
-          if (item.newResult) continue;
+          if (item.card.pinned || item.newResult) continue;
           const key = dayKey(item.card.since || item.card.updatedAt);
           const list = groups.get(key) || [];
           list.push(item);
           groups.set(key, list);
         }
         return [
+          { id: "pinned", title: "置顶", items: pinned },
           { id: "new", title: "新结果", items: fresh },
           ...["今天", "昨天", "更早"].map(function (key) {
             return { id: key, title: key, items: groups.get(key) || [] };
@@ -1206,37 +1250,41 @@ body[data-ds-dark-theme] .kb{
             : h("div", { className: "kb-lanes" },
               LANES.map(function (lane) {
                 const items = byLane[lane.id] || [];
-                const limit = limits[lane.id] || 20;
+                const limit = limits.settled || 20;
                 let visibleItems;
-                let more;
+                let historyItems = [];
+                let more = 0;
                 let historyCount = 0;
                 let historyMore = 0;
                 let primaryCount = 0;
                 let settledToday = 0;
                 if (lane.id === "settled") {
                   const isHistory = function (item) {
+                    if (item.card.pinned) return false;
                     if (item.newResult) return false;
                     if (dayKey(item.card.since || item.card.updatedAt) === "更早") return true;
                     return !item.card.client && item.card.compact === true && item.state === "unknown";
                   };
                   const earlier = items.filter(isHistory);
                   const primary = items.filter(function (item) { return !isHistory(item); });
-                  const visiblePrimary = primary.slice(0, limit);
-                  const visibleHistory = historyOpen ? earlier.slice(0, historyLimit) : [];
-                  visibleItems = visiblePrimary.concat(visibleHistory);
+                  const pinnedPrimary = primary.filter(function (item) { return item.card.pinned; });
+                  const ordinaryPrimary = primary.filter(function (item) { return !item.card.pinned; });
+                  const visiblePrimary = pinnedPrimary.concat(ordinaryPrimary.slice(0, Math.max(0, limit - pinnedPrimary.length)));
+                  historyItems = historyOpen ? earlier.slice(0, historyLimit) : [];
+                  visibleItems = visiblePrimary;
                   more = Math.max(0, primary.length - visiblePrimary.length);
                   historyCount = earlier.length;
-                  historyMore = historyOpen ? Math.max(0, earlier.length - visibleHistory.length) : 0;
+                  historyMore = historyOpen ? Math.max(0, earlier.length - historyItems.length) : 0;
                   primaryCount = primary.length;
                   settledToday = primary.filter(function (item) {
-                    return dayKey(item.card.since || item.card.updatedAt) === "今天";
+                    return !item.card.pinned && dayKey(item.card.since || item.card.updatedAt) === "今天";
                   }).length;
                 } else {
-                  visibleItems = items.slice(0, limit);
-                  more = Math.max(0, items.length - visibleItems.length);
+                  visibleItems = items;
                 }
                 const sections = sectionsFor(lane.id, visibleItems);
                 const newInLane = items.filter(function (item) { return item.newResult; }).length;
+                const pinnedInLane = items.filter(function (item) { return item.card.pinned; }).length;
                 let breakdown = "";
                 if (lane.id === "needs") {
                   const decide = sections[0].items.length;
@@ -1248,13 +1296,13 @@ body[data-ds-dark-theme] .kb{
                   const wait = sections[1].items.length;
                   breakdown = [run ? run + " 执行" : "", wait ? wait + " 等待" : ""].filter(Boolean).join(" · ");
                 } else {
-                  breakdown = newInLane
-                    ? newInLane + " 新结果 · " + primaryCount + " 已收尾"
-                    : settledToday
-                      ? settledToday + " 今天 · " + historyCount + " 历史"
-                      : historyCount
-                        ? historyCount + " 历史"
-                        : primaryCount + " 已收尾";
+                  const parts = [];
+                  if (pinnedInLane) parts.push(pinnedInLane + " 置顶");
+                  if (newInLane) parts.push(newInLane + " 新结果");
+                  else if (settledToday) parts.push(settledToday + " 今天");
+                  if (historyCount) parts.push(historyCount + " 历史");
+                  if (!parts.length) parts.push(primaryCount + " 已收尾");
+                  breakdown = parts.join(" · ");
                 }
                 return h(Lane, {
                   key: lane.id,
@@ -1267,9 +1315,10 @@ body[data-ds-dark-theme] .kb{
                   more: more,
                   onShowMore: function () {
                     setLimits(function (previous) {
-                      return Object.assign({}, previous, { [lane.id]: (previous[lane.id] || 20) + 20 });
+                      return Object.assign({}, previous, { settled: (previous.settled || 20) + 20 });
                     });
                   },
+                  historyItems: historyItems,
                   historyCount: lane.id === "settled" ? historyCount : 0,
                   historyOpen: historyOpen,
                   historyMore: historyMore,
