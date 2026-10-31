@@ -216,7 +216,20 @@ assert.equal(ctx.registration.path, '/task-board-api');
 }
 
 {
-  const { response, json } = await getJson(ctx, '/task-board-api/cards');
+  const warming = await getJson(ctx, '/task-board-api/cards');
+  assert.equal(warming.response.status, 200);
+  assert.equal(warming.json.ok, true);
+  assert.equal(warming.json.warming, true);
+  assert.equal(warming.json.cards.length, 0);
+
+  let cardsJson = null;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const next = await getJson(ctx, '/task-board-api/cards');
+    if (next.json.cards.length > 0) { cardsJson = next; break; }
+  }
+  assert.ok(cardsJson, 'snapshot build completes in the background');
+  const { response, json } = cardsJson;
   assert.equal(response.status, 200);
   assert.equal(json.ok, true);
   assert.equal(json.archivedCount, 1);
@@ -304,4 +317,4 @@ assert.equal(ctx.registration.path, '/task-board-api');
   await pending;
 }
 
-console.log('fake-host: 20 assertions passed');
+console.log('fake-host: passed');

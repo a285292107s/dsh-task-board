@@ -366,6 +366,7 @@ body[data-ds-dark-theme] .kb{
       const state = card.state;
       const activity = card.activity || {};
       const outcome = card.outcome || {};
+      if (card.client && state !== "running") return { kind: "muted", text: "正在读取会话详情…" };
       if (state === "blank") return { kind: "muted", text: "输入第一句话开始；卡片会自动更新。" };
       if (FAILURE_STATES[state]) {
         const reason = outcome.error
@@ -428,6 +429,7 @@ body[data-ds-dark-theme] .kb{
         return { label: pending.label, time: waitText(card.activity && card.activity.runningSince || card.since || card.updatedAt, now) + meta };
       }
       const state = card.state;
+      if (card.client && state !== "running") return { label: "读取中", time: card.updatedAt ? relative(card.updatedAt, now) : "" };
       const meta = stateMeta(state);
       if (lane === "needs") {
         if (state === "blank") return { label: "等你描述任务", time: card.createdAt ? relative(card.createdAt, now) : "" };
@@ -606,6 +608,17 @@ body[data-ds-dark-theme] .kb{
             className: "kb-more",
             onClick: props.onShowMore,
           }, "显示其余 " + more + " 个") : null,
+          isSettled && props.historyCount > 0 ? h("button", {
+            type: "button",
+            className: "kb-more",
+            "aria-expanded": props.historyOpen ? "true" : "false",
+            onClick: props.onToggleHistory,
+          }, props.historyOpen ? "收起历史" : "历史 " + props.historyCount + " 个会话") : null,
+          isSettled && props.historyOpen && props.historyMore > 0 ? h("button", {
+            type: "button",
+            className: "kb-more",
+            onClick: props.onMoreHistory,
+          }, "显示其余 " + props.historyMore + " 个历史") : null,
           isSettled && props.archivedCount > 0
             ? h("div", { className: "kb-section" },
               h("button", {
@@ -720,6 +733,66 @@ body[data-ds-dark-theme] .kb{
       };
     }
 
+    function syntheticRowCard(row, now) {
+      const running = row && row.running === true;
+      return {
+        id: String(row.id),
+        title: row.title || row.displayTitle || "未命名会话",
+        titleSource: row.title ? "unknown" : "provisional",
+        titleUpdatedAt: null,
+        titleCoveredThrough: null,
+        titleStale: false,
+        provisional: !row.title,
+        state: running ? "running" : "unknown",
+        since: row.updatedAt || now,
+        updatedAt: row.updatedAt || now,
+        lastPromptAt: row.updatedAt || now,
+        createdAt: row.updatedAt || now,
+        blank: false,
+        archived: false,
+        pinned: false,
+        cwd: row.cwd || null,
+        workspace: null,
+        fork: null,
+        activity: {
+          running: running,
+          subagents: 0,
+          jobs: 0,
+          scheduled: 0,
+          labels: [],
+          currentStep: running ? "正在生成回复…" : "",
+          todoDone: 0,
+          todoTotal: 0,
+          runningSince: running ? row.updatedAt || now : null,
+        },
+        outcome: null,
+        goal: null,
+        tokens: null,
+        turns: null,
+        formatStatus: row.formatStatus || null,
+        compact: true,
+        client: true,
+        canOpen: true,
+      };
+    }
+
+    function clientCards(list, days, now) {
+      if (!list || !Array.isArray(list.ids) || !list.byId) return [];
+      const cutoff = days > 0 ? now - days * 86400000 : 0;
+      const rows = [];
+      for (const id of list.ids) {
+        const row = list.byId[id];
+        if (!row || row.origin === "subagent" || row.blank === true) continue;
+        if (cutoff && (row.updatedAt || 0) < cutoff && row.running !== true) continue;
+        rows.push(row);
+      }
+      rows.sort(function (a, b) {
+        if (Boolean(a.running) !== Boolean(b.running)) return a.running ? -1 : 1;
+        return (b.updatedAt || 0) - (a.updatedAt || 0);
+      });
+      return rows.slice(0, 80).map(function (row) { return syntheticRowCard(row, now); });
+    }
+
     function BoardView(props) {
       const [board, setBoard] = useState(null);
       const [fatal, setFatal] = useState("");
@@ -729,7 +802,9 @@ body[data-ds-dark-theme] .kb{
       const [query, setQuery] = useState("");
       const [workspace, setWorkspace] = useState("all");
       const [days, setDays] = useState(7);
-      const [limits, setLimits] = useState({ needs: 80, working: 80, settled: 80 });
+      const [limits, setLimits] = useState({ needs: 20, working: 20, settled: 20 });
+      const [historyOpen, setHistoryOpen] = useState(false);
+      const [historyLimit, setHistoryLimit] = useState(20);
       const [archivedOpen, setArchivedOpen] = useState(false);
       const [archivedLoading, setArchivedLoading] = useState(false);
       const [archivedError, setArchivedError] = useState("");
@@ -764,7 +839,11 @@ body[data-ds-dark-theme] .kb{
       }, [days]);
 
       useEffect(function () { boardRef.current = board; }, [board]);
-      useEffect(function () { setLimits({ needs: 80, working: 80, settled: 80 }); }, [days]);
+      useEffect(function () {
+        setLimits({ needs: 20, working: 20, settled: 20 });
+        setHistoryOpen(false);
+        setHistoryLimit(20);
+      }, [days]);
       useEffect(function () { readCards(false); }, [readCards]);
       useEffect(function () {
         const timer = setInterval(function () { readCards(false); }, 10000);
@@ -803,17 +882,23 @@ body[data-ds-dark-theme] .kb{
               const patch = JSON.parse(event.data);
               setLive(true);
               setBoard(function (previous) {
-                if (!previous) return previous;
-                const map = new Map(previous.cards.map(function (card) { return [card.id, card]; }));
+                const map = new Map(previous && Array.isArray(previous.cards)
+                  ? previous.cards.map(function (card) { return [card.id, card]; })
+                  : []);
                 for (const card of patch.upserts || []) map.set(card.id, card);
                 for (const id of patch.removes || []) map.delete(id);
                 return {
-                  ...previous,
+                  ...(previous || {}),
+                  warming: false,
                   revision: patch.revision,
-                  generatedAt: patch.generatedAt || previous.generatedAt,
+                  generatedAt: patch.generatedAt || (previous && previous.generatedAt) || Date.now(),
                   cards: Array.from(map.values()),
-                  archivedCount: patch.archivedCount === undefined ? previous.archivedCount : patch.archivedCount,
-                  titleFollow: patch.titleFollow === undefined ? previous.titleFollow : patch.titleFollow,
+                  archivedCount: patch.archivedCount === undefined
+                    ? (previous && previous.archivedCount) || 0
+                    : patch.archivedCount,
+                  titleFollow: patch.titleFollow === undefined
+                    ? (previous && previous.titleFollow)
+                    : patch.titleFollow,
                 };
               });
             } catch (e) { }
@@ -859,7 +944,10 @@ body[data-ds-dark-theme] .kb{
         }
       }, [archivedOpen, archivedItems.length]);
 
-      const allCards = board && Array.isArray(board.cards) ? board.cards : [];
+      const hostReady = board && board.warming !== true;
+      const allCards = hostReady && Array.isArray(board.cards)
+        ? board.cards
+        : clientCards(sessionsList, days, now);
       let currentBlank = currentBlankId(sessionsList);
       if (!currentBlank) {
         const blankCards = allCards.filter(function (card) { return card.blank; });
@@ -991,22 +1079,28 @@ body[data-ds-dark-theme] .kb{
             { id: "wait", title: "等待", items: wait },
           ];
         }
+        const fresh = items.filter(function (item) { return item.newResult; });
         const groups = new Map();
         for (const item of items) {
+          if (item.newResult) continue;
           const key = dayKey(item.card.since || item.card.updatedAt);
           const list = groups.get(key) || [];
           list.push(item);
           groups.set(key, list);
         }
-        return ["今天", "昨天", "更早"].map(function (key) {
-          return { id: key, title: key, items: groups.get(key) || [] };
-        });
+        return [
+          { id: "new", title: "新结果", items: fresh },
+          ...["今天", "昨天", "更早"].map(function (key) {
+            return { id: key, title: key, items: groups.get(key) || [] };
+          }),
+        ];
       }
 
       const counts = { needs: byLane.needs.length, working: byLane.working.length, settled: byLane.settled.length };
       const newCount = decorated.filter(function (item) { return item.newResult; }).length;
       const workspaceLabel = workspace === "all" ? "全部工作区" : (workspaceOptions.find(function (option) { return option.key === workspace; }) || {}).label || "工作区";
       const total = counts.needs + counts.working + counts.settled;
+      const warming = !!(board && board.warming);
       const titleHint = board && board.titleFollow === false && total >= 3;
 
       return h("div", { className: "kb", "data-testid": "task-board" },
@@ -1018,7 +1112,7 @@ body[data-ds-dark-theme] .kb{
               h("p", { className: "kb-sub" },
                 "每个 DSH 会话自动成为一张卡片",
                 h("span", { className: "kb-readonly" }, "只读"),
-                h("span", { className: "kb-livestate", "data-live": live ? "true" : "false" }, h("i"), live ? "实时" : "轮询")
+                h("span", { className: "kb-livestate", "data-live": live && !warming ? "true" : "false" }, h("i"), warming ? "同步中" : live ? "实时" : "轮询")
               )
             ),
             h("div", { className: "kb-headtools" },
@@ -1075,12 +1169,14 @@ body[data-ds-dark-theme] .kb{
             h("span", { className: "kb-stat" }, h("span", null, workspaceLabel))
           )
         ),
-        error ? h("div", { className: "kb-banner", "data-kind": "error", role: "status" },
+        (error || fatal) ? h("div", { className: "kb-banner", "data-kind": "error", role: "status" },
           h(Icon, { name: "alert", size: 14 }),
-          h("span", null, "更新失败：" + error + "。显示上次数据。"),
+          h("span", null, fatal
+            ? "读取失败：" + fatal + "。先显示本地会话摘要。"
+            : "更新失败：" + error + "。显示上次数据。"),
           h("button", { type: "button", onClick: function () { readCards(true); } }, "重试")
         ) : null,
-        fatal
+        fatal && allCards.length === 0
           ? h("div", { className: "kb-fatal" },
             h("div", { className: "kb-fatalbox" },
               h("h2", null, "无法读取会话"),
@@ -1088,7 +1184,7 @@ body[data-ds-dark-theme] .kb{
               h("button", { type: "button", onClick: function () { readCards(true); } }, "重试")
             )
           )
-          : !board
+          : !board && allCards.length === 0
             ? h("div", { className: "kb-lanes" },
               LANES.map(function (lane) {
                 return h("section", { className: "kb-lane", "data-lane": lane.id, key: lane.id },
@@ -1110,8 +1206,35 @@ body[data-ds-dark-theme] .kb{
             : h("div", { className: "kb-lanes" },
               LANES.map(function (lane) {
                 const items = byLane[lane.id] || [];
-                const limit = limits[lane.id] || 80;
-                const visibleItems = items.slice(0, limit);
+                const limit = limits[lane.id] || 20;
+                let visibleItems;
+                let more;
+                let historyCount = 0;
+                let historyMore = 0;
+                let primaryCount = 0;
+                let settledToday = 0;
+                if (lane.id === "settled") {
+                  const isHistory = function (item) {
+                    if (item.newResult) return false;
+                    if (dayKey(item.card.since || item.card.updatedAt) === "更早") return true;
+                    return !item.card.client && item.card.compact === true && item.state === "unknown";
+                  };
+                  const earlier = items.filter(isHistory);
+                  const primary = items.filter(function (item) { return !isHistory(item); });
+                  const visiblePrimary = primary.slice(0, limit);
+                  const visibleHistory = historyOpen ? earlier.slice(0, historyLimit) : [];
+                  visibleItems = visiblePrimary.concat(visibleHistory);
+                  more = Math.max(0, primary.length - visiblePrimary.length);
+                  historyCount = earlier.length;
+                  historyMore = historyOpen ? Math.max(0, earlier.length - visibleHistory.length) : 0;
+                  primaryCount = primary.length;
+                  settledToday = primary.filter(function (item) {
+                    return dayKey(item.card.since || item.card.updatedAt) === "今天";
+                  }).length;
+                } else {
+                  visibleItems = items.slice(0, limit);
+                  more = Math.max(0, items.length - visibleItems.length);
+                }
                 const sections = sectionsFor(lane.id, visibleItems);
                 const newInLane = items.filter(function (item) { return item.newResult; }).length;
                 let breakdown = "";
@@ -1125,14 +1248,13 @@ body[data-ds-dark-theme] .kb{
                   const wait = sections[1].items.length;
                   breakdown = [run ? run + " 执行" : "", wait ? wait + " 等待" : ""].filter(Boolean).join(" · ");
                 } else {
-                  const todayCount = items.filter(function (item) {
-                    return dayKey(item.card.since || item.card.updatedAt) === "今天";
-                  }).length;
                   breakdown = newInLane
-                    ? newInLane + " 新结果 · " + (items.length - newInLane) + " 已收尾"
-                    : todayCount
-                      ? todayCount + " 今天 · " + (items.length - todayCount) + " 更早"
-                      : items.length + " 已收尾";
+                    ? newInLane + " 新结果 · " + primaryCount + " 已收尾"
+                    : settledToday
+                      ? settledToday + " 今天 · " + historyCount + " 历史"
+                      : historyCount
+                        ? historyCount + " 历史"
+                        : primaryCount + " 已收尾";
                 }
                 return h(Lane, {
                   key: lane.id,
@@ -1142,13 +1264,20 @@ body[data-ds-dark-theme] .kb{
                   sections: sections,
                   openedAt: openedAt,
                   onOpen: openCard,
-                  more: Math.max(0, items.length - visibleItems.length),
+                  more: more,
                   onShowMore: function () {
                     setLimits(function (previous) {
-                      return Object.assign({}, previous, { [lane.id]: (previous[lane.id] || 80) + 80 });
+                      return Object.assign({}, previous, { [lane.id]: (previous[lane.id] || 20) + 20 });
                     });
                   },
-                  archivedCount: lane.id === "settled" ? (board.archivedCount || 0) : 0,
+                  historyCount: lane.id === "settled" ? historyCount : 0,
+                  historyOpen: historyOpen,
+                  historyMore: historyMore,
+                  onToggleHistory: function () { setHistoryOpen(function (value) { return !value; }); },
+                  onMoreHistory: function () {
+                    setHistoryLimit(function (value) { return value + 20; });
+                  },
+                  archivedCount: lane.id === "settled" && board ? (board.archivedCount || 0) : 0,
                   archivedOpen: archivedOpen,
                   archivedLoading: archivedLoading,
                   archivedError: archivedError,

@@ -4,9 +4,10 @@ export const inject = ['webServer'];
 
 const ROUTE_PREFIX = '/task-board-api';
 const SNAPSHOT_TTL_MS = 10000;
+const LIST_TIMEOUT_MS = 15000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DETAIL_WINDOW_MS = 24 * 60 * 60 * 1000;
-const DETAIL_LIMIT = 16;
+const DETAIL_LIMIT = 12;
 const DETAIL_TTL_MS = 12000;
 const ACTIVITY_TTL_MS = 5000;
 const ACTIVITY_TIMEOUT_MS = 1200;
@@ -171,7 +172,7 @@ async function listSummaries(ctx) {
   const controller = getService(ctx, 'sessionController');
   if (controller && typeof controller.list === 'function') {
     const abort = new AbortController();
-    const timer = setTimeout(() => abort.abort(), 8000);
+    const timer = setTimeout(() => abort.abort(), LIST_TIMEOUT_MS);
     if (timer && typeof timer.unref === 'function') timer.unref();
     try {
       const value = await controller.list({}, abort.signal);
@@ -726,22 +727,56 @@ function childChildren(index, parentId) {
 }
 
 function makeSnapshotCache(ctx) {
-  const cache = { cards: null, archived: null };
+  const cache = new Map();
+  const failures = new Map();
   const caches = { detail: new Map(), activity: new Map() };
   const pending = new Map();
-  return async function getSnapshot(includeArchived, force, days) {
-    const key = includeArchived ? 'archived' : 'cards:' + (days > 0 ? days : 0);
-    const current = cache[key];
-    if (!force && current && Date.now() - current.at < SNAPSHOT_TTL_MS) return current.value;
+
+  function startBuild(key, includeArchived, days) {
     if (pending.has(key)) return pending.get(key);
     const task = buildSnapshot(ctx, includeArchived, caches, days)
       .then((value) => {
-        cache[key] = { at: Date.now(), value };
+        failures.delete(key);
+        cache.set(key, {
+          at: Date.now(),
+          value,
+          degraded: value && value.source === 'sessionQuery',
+        });
         return value;
+      })
+      .catch((error) => {
+        failures.set(key, { at: Date.now(), message: String((error && error.message) || error) });
+        throw error;
       })
       .finally(() => pending.delete(key));
     pending.set(key, task);
     return task;
+  }
+
+  return async function getSnapshot(includeArchived, force, days) {
+    const key = includeArchived ? 'archived' : 'cards:' + (days > 0 ? days : 0);
+    const current = cache.get(key);
+    if (!force && current) {
+      const ttl = current.degraded ? 1500 : SNAPSHOT_TTL_MS;
+      const stale = Date.now() - current.at >= ttl;
+      if (stale) startBuild(key, includeArchived, days).catch(() => undefined);
+      return stale ? { ...current.value, stale: true } : current.value;
+    }
+    if (force) return startBuild(key, includeArchived, days);
+    const failed = failures.get(key);
+    if (failed && Date.now() - failed.at < 2000) throw new Error(failed.message);
+    if (failed) failures.delete(key);
+    startBuild(key, includeArchived, days).catch(() => undefined);
+    return {
+      revision: '',
+      generatedAt: Date.now(),
+      cards: [],
+      archivedCount: 0,
+      titleFollow: null,
+      source: 'warming',
+      days: days > 0 ? days : 0,
+      warming: true,
+    };
   };
 }
 
@@ -838,7 +873,8 @@ export function apply(ctx) {
         return json(res, 200, { ok: true, ...snapshot });
       }
       if (sub === '/archived') {
-        const snapshot = await getSnapshot(true, url.searchParams.get('refresh') === '1', 0);
+        let snapshot = await getSnapshot(true, false, 0);
+        if (snapshot.warming) snapshot = await getSnapshot(true, true, 0);
         return json(res, 200, { ok: true, ...snapshot });
       }
       if (sub === '/events') {
@@ -856,4 +892,23 @@ export function apply(ctx) {
     path: ROUTE_PREFIX,
     handler: handleRequest,
   }), 'dsh-task-board: read-only api');
+
+  ctx.effect(() => {
+    let timer = null;
+    let attempts = 0;
+    const tick = () => {
+      const controller = getService(ctx, 'sessionController');
+      if (controller && typeof controller.list === 'function') {
+        getSnapshot(false, false, 7).catch(() => undefined);
+        return;
+      }
+      attempts += 1;
+      if (attempts >= 40) return;
+      timer = setTimeout(tick, 500);
+      if (timer && typeof timer.unref === 'function') timer.unref();
+    };
+    timer = setTimeout(tick, 800);
+    if (timer && typeof timer.unref === 'function') timer.unref();
+    return () => clearTimeout(timer);
+  }, 'dsh-task-board: warm snapshot');
 }
