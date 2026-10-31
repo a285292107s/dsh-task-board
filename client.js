@@ -673,11 +673,17 @@ body[data-ds-dark-theme] .kb{
                 h("span", null, h(Icon, { name: "chevron", size: 13 }))
               ),
               props.archivedOpen ? h("div", { className: "kb-archlist" },
-                props.archivedLoading ? h("p", { className: "kb-hint" }, "正在加载归档…")
-                  : props.archivedError ? h("p", { className: "kb-hint" }, props.archivedError)
-                    : props.archivedItems.map(function (item) {
-                      return h(Card, { key: item.card.id, item: item, openedAt: props.openedAt, onOpen: props.onOpen });
-                    })
+                props.archivedItems.map(function (item) {
+                  return h(Card, { key: item.card.id, item: item, openedAt: props.openedAt, onOpen: props.onOpen });
+                }),
+                props.archivedLoading && !props.archivedItems.length ? h("p", { className: "kb-hint" }, "正在加载归档…") : null,
+                props.archivedLoading && props.archivedItems.length ? h("p", { className: "kb-hint" }, "正在更新归档…") : null,
+                props.archivedError ? h("p", { className: "kb-hint" }, props.archivedError) : null,
+                props.archivedError ? h("button", {
+                  type: "button",
+                  className: "kb-more",
+                  onClick: props.onRetryArchived,
+                }, "重试") : null
               ) : null,
               h("p", { className: "kb-archhint" }, "归档会话只读展示；需在 DSH 侧栏恢复后才能打开。")
             )
@@ -850,6 +856,7 @@ body[data-ds-dark-theme] .kb{
       const [archivedLoading, setArchivedLoading] = useState(false);
       const [archivedError, setArchivedError] = useState("");
       const [archivedItems, setArchivedItems] = useState([]);
+      const [archivedCountAtLoad, setArchivedCountAtLoad] = useState(-1);
       const [notice, setNotice] = useState(null);
       const [now, setNow] = useState(Date.now());
       const [lastSeen, setLastSeen] = useState(function () {
@@ -859,6 +866,8 @@ body[data-ds-dark-theme] .kb{
       const searchRef = useRef(null);
       const noticeTimer = useRef(null);
       const boardRef = useRef(null);
+      const archivedLoadingRef = useRef(false);
+      const archivedRequestedCount = useRef(-1);
 
       const statuses = props.statuses || (typeof Map === "function" ? new Map() : {});
       const sessionsList = props.sessionsList;
@@ -969,21 +978,43 @@ body[data-ds-dark-theme] .kb{
         setNotice({ kind: "warn", text: "当前宿主不支持从看板打开会话。" });
       }, []);
 
-      const toggleArchived = useCallback(async function () {
-        if (archivedOpen) { setArchivedOpen(false); return; }
-        setArchivedOpen(true);
-        if (archivedItems.length) return;
+      const loadArchived = useCallback(async function (force) {
+        if (archivedLoadingRef.current) return;
+        archivedLoadingRef.current = true;
         setArchivedLoading(true);
         setArchivedError("");
+        const boardCount = boardRef.current && typeof boardRef.current.archivedCount === "number"
+          ? boardRef.current.archivedCount
+          : -1;
         try {
-          const data = await api("/archived");
+          const data = await api("/archived" + (force === true ? "?refresh=1" : ""));
+          const serverCount = typeof data.archivedCount === "number" ? data.archivedCount : boardCount;
           setArchivedItems(Array.isArray(data.cards) ? data.cards : []);
+          setArchivedCountAtLoad(boardCount >= 0 ? serverCount : -1);
+          if (force !== true && boardCount >= 0 && serverCount !== boardCount) {
+            archivedRequestedCount.current = serverCount;
+          }
         } catch (e) {
           setArchivedError("归档加载失败：" + String((e && e.message) || e));
         } finally {
+          archivedLoadingRef.current = false;
           setArchivedLoading(false);
         }
-      }, [archivedOpen, archivedItems.length]);
+      }, []);
+
+      const toggleArchived = useCallback(function () {
+        if (archivedOpen) { setArchivedOpen(false); return; }
+        setArchivedOpen(true);
+      }, [archivedOpen]);
+
+      useEffect(function () {
+        if (!archivedOpen || archivedError) return;
+        const count = board && typeof board.archivedCount === "number" ? board.archivedCount : -1;
+        if (archivedCountAtLoad === count) return;
+        if (archivedRequestedCount.current === count) return;
+        archivedRequestedCount.current = count;
+        loadArchived(archivedItems.length > 0);
+      }, [archivedOpen, archivedError, archivedItems.length, archivedCountAtLoad, board, loadArchived]);
 
       const hostReady = board && board.warming !== true;
       const allCards = hostReady && Array.isArray(board.cards)
@@ -1343,6 +1374,11 @@ body[data-ds-dark-theme] .kb{
                     return { card: effective, pending: pending, lane: "settled", view: view, newResult: false, state: "archived" };
                   }),
                   onToggleArchived: toggleArchived,
+                  onRetryArchived: function () {
+                    const count = board && typeof board.archivedCount === "number" ? board.archivedCount : -1;
+                    archivedRequestedCount.current = count;
+                    loadArchived(true);
+                  },
                 });
               })
             ),

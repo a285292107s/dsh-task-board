@@ -4,6 +4,7 @@ export const inject = ['webServer'];
 
 const ROUTE_PREFIX = '/task-board-api';
 const SNAPSHOT_TTL_MS = 10000;
+const ARCHIVED_SUMMARY_TTL_MS = 15000;
 const LIST_TIMEOUT_MS = 15000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DETAIL_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -205,6 +206,15 @@ async function listSummaries(ctx) {
     return { items, source: 'sessionQuery' };
   }
   throw new Error('宿主没有可用的会话列表服务');
+}
+
+async function listSummariesCached(ctx, caches, maxAgeMs) {
+  if (maxAgeMs > 0 && caches.summaries && Date.now() - caches.summaries.at <= maxAgeMs) {
+    return caches.summaries;
+  }
+  const listed = await listSummaries(ctx);
+  caches.summaries = { at: Date.now(), items: listed.items, source: listed.source };
+  return caches.summaries;
 }
 
 async function readTitleSnapshots(ctx, ids) {
@@ -671,7 +681,7 @@ function titleFollowOf(titleSnapshots) {
 
 async function buildSnapshot(ctx, includeArchived, caches, days) {
   const now = Date.now();
-  const listed = await listSummaries(ctx);
+  const listed = await listSummariesCached(ctx, caches, includeArchived ? ARCHIVED_SUMMARY_TTL_MS : 0);
   const items = listed.items.filter((item) => item.id);
   const index = readWorkspaceIndex(ctx);
   const nonSubagent = items.filter((item) => item.origin !== 'subagent' && item.blank !== true);
@@ -683,14 +693,18 @@ async function buildSnapshot(ctx, includeArchived, caches, days) {
     return item.updatedAt >= now - windowMs || item.agentAvailable;
   });
   const rich = new Set();
-  for (const item of selected) {
-    if (item.blank || item.running) rich.add(item.id);
+  if (!includeArchived) {
+    for (const item of selected) {
+      if (item.blank || item.running) rich.add(item.id);
+    }
+    for (const item of selected.slice().sort((left, right) => right.updatedAt - left.updatedAt)) {
+      if (rich.size >= DETAIL_LIMIT) break;
+      if (item.updatedAt > now - DETAIL_WINDOW_MS) rich.add(item.id);
+    }
   }
-  for (const item of selected.slice().sort((left, right) => right.updatedAt - left.updatedAt)) {
-    if (rich.size >= DETAIL_LIMIT) break;
-    if (item.updatedAt > now - DETAIL_WINDOW_MS) rich.add(item.id);
-  }
-  const titleSnapshots = await readTitleSnapshots(ctx, selected.filter((item) => rich.has(item.id)).map((item) => item.id));
+  const titleSnapshots = includeArchived
+    ? new Map()
+    : await readTitleSnapshots(ctx, selected.filter((item) => rich.has(item.id)).map((item) => item.id));
   const childrenIndex = buildChildIndex(items);
   const parentTitles = new Map();
   for (const item of items) parentTitles.set(item.id, item.title || '');
@@ -729,7 +743,7 @@ function childChildren(index, parentId) {
 function makeSnapshotCache(ctx) {
   const cache = new Map();
   const failures = new Map();
-  const caches = { detail: new Map(), activity: new Map() };
+  const caches = { detail: new Map(), activity: new Map(), summaries: null };
   const pending = new Map();
 
   function startBuild(key, includeArchived, days) {
@@ -742,6 +756,9 @@ function makeSnapshotCache(ctx) {
           value,
           degraded: value && value.source === 'sessionQuery',
         });
+        if (!includeArchived && !cache.has('archived') && !pending.has('archived')) {
+          startBuild('archived', true, 0).catch(() => undefined);
+        }
         return value;
       })
       .catch((error) => {
@@ -816,6 +833,7 @@ async function handleEvents(ctx, req, res, getSnapshot, days) {
     if (closed) return;
     try {
       const snapshot = await getSnapshot(false, false, days);
+      if (snapshot.warming) return;
       const next = new Map();
       const upserts = [];
       for (const card of snapshot.cards) {
@@ -873,8 +891,9 @@ export function apply(ctx) {
         return json(res, 200, { ok: true, ...snapshot });
       }
       if (sub === '/archived') {
+        const force = url.searchParams.get('refresh') === '1';
         let snapshot = await getSnapshot(true, false, 0);
-        if (snapshot.warming) snapshot = await getSnapshot(true, true, 0);
+        if (snapshot.warming || force) snapshot = await getSnapshot(true, true, 0);
         return json(res, 200, { ok: true, ...snapshot });
       }
       if (sub === '/events') {

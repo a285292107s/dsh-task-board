@@ -117,12 +117,19 @@ const activity = {
 };
 
 function makeCtx(options = {}) {
+  const state = { listCalls: 0 };
   const ctx = {
     logger: { warn: (...args) => console.warn('[warn]', ...args) },
     effect: (fn) => { const dispose = fn(); return typeof dispose === 'function' ? dispose : () => {}; },
     get(name) {
       if (name === 'sessionController' && options.sessionController !== false) {
-        return { list: async () => ({ items }) };
+        return {
+          list: async () => {
+            state.listCalls += 1;
+            if (options.listDelay) await new Promise((resolve) => setTimeout(resolve, options.listDelay));
+            return { items };
+          },
+        };
       }
       if (name === 'sessionQuery') {
         return {
@@ -172,6 +179,7 @@ function makeCtx(options = {}) {
       },
     },
   };
+  ctx.state = state;
   apply(ctx);
   return ctx;
 }
@@ -276,6 +284,7 @@ assert.equal(ctx.registration.path, '/task-board-api');
   assert.equal(json.cards[0].id, 's6');
   assert.equal(json.cards[0].state, 'archived');
   assert.equal(json.cards[0].canOpen, false);
+  assert.equal(ctx.state.listCalls, 1, '归档快照复用主快照的会话摘要，不重复全量扫描');
 }
 
 {
@@ -312,6 +321,33 @@ assert.equal(ctx.registration.path, '/task-board-api');
   const text = chunks.join('');
   assert.match(text, /event: cards/);
   assert.match(text, /"revision"/);
+  req.emit('close');
+  res.writableEnded = true;
+  await pending;
+}
+
+{
+  const delayed = makeCtx({ listDelay: 300 });
+  const req = new EventEmitter();
+  req.method = 'GET';
+  req.url = '/task-board-api/events';
+  const chunks = [];
+  const res = {
+    statusCode: 0,
+    headers: {},
+    writableEnded: false,
+    setHeader(key, value) { this.headers[key.toLowerCase()] = value; },
+    writeHead(code, headers) { this.statusCode = code; Object.assign(this.headers, headers || {}); },
+    flushHeaders() {},
+    write(chunk) { chunks.push(String(chunk)); return true; },
+    end() { this.writableEnded = true; },
+    on() {},
+  };
+  const pending = delayed.registration.handler(req, res);
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  assert.doesNotMatch(chunks.join(''), /event: cards/, 'SSE 不推送 warming 空快照');
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+  assert.match(chunks.join(''), /event: cards/, '快照就绪后才推送');
   req.emit('close');
   res.writableEnded = true;
   await pending;
