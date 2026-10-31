@@ -124,9 +124,22 @@ const activity = {
 
 function makeCtx(options = {}) {
   const state = { listCalls: 0, observations: 0, disposed: 0 };
+  const handlers = new Map();
   const ctx = {
     logger: { warn: (...args) => console.warn('[warn]', ...args) },
     effect: (fn) => { const dispose = fn(); return typeof dispose === 'function' ? dispose : () => {}; },
+    on(event, listener) {
+      const list = handlers.get(event) || [];
+      list.push(listener);
+      handlers.set(event, list);
+      return () => {
+        const index = list.indexOf(listener);
+        if (index >= 0) list.splice(index, 1);
+      };
+    },
+    emit(event, ...args) {
+      for (const listener of (handlers.get(event) || []).slice()) listener(...args);
+    },
     get(name) {
       if (name === 'sessionController' && options.sessionController !== false) {
         return {
@@ -439,6 +452,60 @@ assert.equal(ctx.registration.path, '/task-board-api');
   req.emit('close');
   res.writableEnded = true;
   await pending;
+}
+
+{
+  const live = makeCtx();
+  let initial = null;
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const next = await getJson(live, '/task-board-api/cards?days=7');
+    if (next.json.warming !== true && next.json.cards.length > 0) { initial = next; break; }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.ok(initial, '事件用例的基线快照建好');
+  const baselineCalls = live.state.listCalls;
+  assert.equal(baselineCalls, 1, '基线只读一次会话列表');
+
+  live.emit('api-session/status', 's3', true);
+  let promoted = null;
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const next = await getJson(live, '/task-board-api/cards?days=7');
+    if (next.json.cards.find((card) => card.id === 's3')?.state === 'running') { promoted = next; break; }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.ok(promoted, 'running 事件驱动快照重建');
+  assert.equal(live.state.listCalls, baselineCalls, '事件触发的重建不重读会话列表');
+
+  live.emit('api-session/activity', 's1', now + 5 * MIN);
+  let touched = null;
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const next = await getJson(live, '/task-board-api/cards?days=7');
+    if (next.json.cards.find((card) => card.id === 's1')?.updatedAt === now + 5 * MIN) { touched = next; break; }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.ok(touched, 'activity 事件推进 updatedAt');
+  assert.equal(live.state.listCalls, baselineCalls, 'activity 事件同样不重读会话列表');
+
+  live.emit('api-session/added', summary('s12', { title: '事件新增会话', updatedAt: now - 1000 }));
+  let added = null;
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const next = await getJson(live, '/task-board-api/cards?days=7');
+    if (next.json.cards.some((card) => card.id === 's12')) { added = next; break; }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.ok(added, '新增会话从事件进入快照');
+  assert.equal(live.state.listCalls, baselineCalls, '新增会话不重读会话列表');
+
+  live.emit('api-session/removed', 's2');
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  let detached = null;
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const next = await getJson(live, '/task-board-api/cards?days=7');
+    if (next.json.cards.some((card) => card.id === 's2')) { detached = next; break; }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.ok(detached, 'detach 的会话保留卡片而不是删除');
+  assert.equal(live.state.listCalls, baselineCalls, 'detach 不重读会话列表');
 }
 
 console.log('fake-host: passed');

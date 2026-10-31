@@ -4,18 +4,31 @@ export const inject = ['webServer'];
 
 const ROUTE_PREFIX = '/task-board-api';
 const SNAPSHOT_TTL_MS = 10000;
-const ARCHIVED_SUMMARY_TTL_MS = 15000;
+const SUMMARY_TTL_MS = 60000;
+const DEGRADED_SUMMARY_TTL_MS = 1500;
+const RECONCILE_MS = 60000;
+const MIN_BUILD_INTERVAL_MS = 800;
 const LIST_TIMEOUT_MS = 15000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DETAIL_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DETAIL_LIMIT = 12;
-const DETAIL_TTL_MS = 12000;
+const DETAIL_FALLBACK_MS = 600000;
 const ACTIVITY_TTL_MS = 5000;
 const ACTIVITY_TIMEOUT_MS = 1200;
 const TITLE_CHANGE_GRACE_MS = 5000;
 const DETAIL_CACHE_LIMIT = 32;
 const ACTIVITY_CACHE_LIMIT = 64;
 const MAX_SNAPSHOT_KEYS = 6;
+const RICH_PROJECTION_KEYS = new Set([
+  'title',
+  'sessionListMetadata',
+  'todos',
+  'turnOutline',
+  'goal',
+  'tokenUsage',
+  'subagent',
+  'subagentTiming',
+]);
 
 function asText(value, max) {
   if (value === null || value === undefined) return '';
@@ -226,23 +239,216 @@ async function listSummaries(ctx) {
   throw new Error('宿主没有可用的会话列表服务');
 }
 
-async function listSummariesCached(ctx, caches, maxAgeMs, force) {
-  const cached = caches.summaries;
-  const effectiveMaxAge = cached && cached.source === 'sessionQuery' ? Math.min(maxAgeMs, 1500) : maxAgeMs;
-  if (!force && effectiveMaxAge > 0 && cached && Date.now() - cached.at <= effectiveMaxAge) {
-    return cached;
+function createReadState() {
+  return {
+    rows: new Map(),
+    at: 0,
+    source: null,
+    inflight: null,
+    pendingMutations: null,
+    error: null,
+    version: 0,
+    dirty: new Set(),
+    detail: new Map(),
+    activity: new Map(),
+  };
+}
+
+function mergeSummaryRow(previous, next) {
+  if (!previous) return next;
+  return {
+    ...previous,
+    ...next,
+    title: next.title || previous.title,
+    updatedAt: Math.max(previous.updatedAt || 0, next.updatedAt || 0),
+    projections: next.projections || previous.projections,
+  };
+}
+
+function applyRowMutation(rows, mutation) {
+  switch (mutation.kind) {
+    case 'upsert': {
+      const previous = rows.get(mutation.summary.id);
+      rows.set(mutation.summary.id, mergeSummaryRow(previous, mutation.summary));
+      return;
+    }
+    case 'status': {
+      const row = rows.get(mutation.sessionId);
+      if (!row) return;
+      const running = mutation.running === true;
+      rows.set(mutation.sessionId, {
+        ...row,
+        running,
+        agentAvailable: mutation.agentAvailable === undefined ? row.agentAvailable : mutation.agentAvailable,
+        blank: running ? false : row.blank,
+      });
+      return;
+    }
+    case 'activity': {
+      const row = rows.get(mutation.sessionId);
+      if (!row) return;
+      const at = asInt(mutation.updatedAt, 0);
+      if (at > row.updatedAt) rows.set(mutation.sessionId, { ...row, updatedAt: at });
+      return;
+    }
+    case 'projection': {
+      const row = rows.get(mutation.sessionId);
+      if (!row) return;
+      const values = row.projections && row.projections.values ? row.projections.values : {};
+      const next = {
+        ...row,
+        projections: {
+          kind: 'sequenced',
+          values: { ...values, [mutation.key]: mutation.value },
+        },
+      };
+      if (mutation.key === 'title' && typeof mutation.value === 'string') next.title = mutation.value;
+      if (mutation.key === 'sessionListMetadata' && mutation.value && typeof mutation.value === 'object') {
+        next.blank = mutation.value.blank === true;
+        const lastPromptAt = asInt(mutation.value.lastPromptAt, 0);
+        if (lastPromptAt > next.updatedAt) next.updatedAt = lastPromptAt;
+      }
+      rows.set(mutation.sessionId, next);
+      return;
+    }
   }
-  if (caches.summaryPending) return caches.summaryPending;
-  const task = listSummaries(ctx)
-    .then((listed) => {
-      caches.summaries = { at: Date.now(), items: listed.items, source: listed.source };
-      return caches.summaries;
-    })
-    .finally(() => {
-      if (caches.summaryPending === task) caches.summaryPending = null;
-    });
-  caches.summaryPending = task;
+}
+
+function recordRowMutation(read, mutation) {
+  applyRowMutation(read.rows, mutation);
+  if (read.pendingMutations) read.pendingMutations.push(mutation);
+  read.version += 1;
+}
+
+function markDirty(read, sessionId) {
+  if (sessionId) read.dirty.add(String(sessionId));
+}
+
+async function ensureRows(ctx, read, force) {
+  const ttl = read.source === 'sessionQuery' ? DEGRADED_SUMMARY_TTL_MS : SUMMARY_TTL_MS;
+  if (!force && read.rows.size > 0 && Date.now() - read.at < ttl) return read;
+  if (read.inflight) return read.inflight;
+  const mutations = [];
+  read.pendingMutations = mutations;
+  const task = (async () => {
+    try {
+      const listed = await listSummaries(ctx);
+      const rows = new Map();
+      for (const item of listed.items) rows.set(item.id, item);
+      for (const mutation of mutations) applyRowMutation(rows, mutation);
+      read.rows = rows;
+      read.source = listed.source;
+      read.at = Date.now();
+      read.error = null;
+      read.version += 1;
+      return read;
+    } catch (error) {
+      read.error = error;
+      throw error;
+    } finally {
+      if (read.pendingMutations === mutations) read.pendingMutations = null;
+      read.inflight = null;
+    }
+  })();
+  read.inflight = task;
   return task;
+}
+
+function subscribeSessionEvents(ctx, read, requestPush) {
+  const listen = (name, handler) => (
+    typeof ctx.on === 'function' ? ctx.on(name, handler, { global: true }) : () => {}
+  );
+  const disposers = [
+    listen('api-session/added', (summary) => {
+      if (!summary || !summary.sessionId) return;
+      const row = listFields(summary);
+      markDirty(read, row.id);
+      recordRowMutation(read, { kind: 'upsert', summary: row });
+      requestPush();
+    }),
+    listen('api-session/removed', (sessionId) => {
+      const id = String(sessionId || '');
+      if (!id) return;
+      markDirty(read, id);
+      recordRowMutation(read, { kind: 'status', sessionId: id, running: false, agentAvailable: false });
+      requestPush();
+    }),
+    listen('api-session/status', (sessionId, running) => {
+      const id = String(sessionId || '');
+      if (!id) return;
+      markDirty(read, id);
+      recordRowMutation(read, {
+        kind: 'status',
+        sessionId: id,
+        running: running === true,
+        agentAvailable: running === true ? true : undefined,
+      });
+      requestPush();
+    }),
+    listen('api-session/activity', (sessionId, updatedAt) => {
+      const id = String(sessionId || '');
+      if (!id) return;
+      recordRowMutation(read, { kind: 'activity', sessionId: id, updatedAt: asInt(updatedAt, 0) });
+      requestPush();
+    }),
+  ];
+  try {
+    const projections = getService(ctx, 'sessionProjections');
+    if (projections && typeof projections.onChanged === 'function') {
+      disposers.push(projections.onChanged((session, key, value) => {
+        if (!session || !RICH_PROJECTION_KEYS.has(key)) return;
+        const sessionId = String(session.id || '');
+        if (!sessionId) return;
+        read.dirty.add(sessionId);
+        if (key === 'title' || key === 'sessionListMetadata') {
+          recordRowMutation(read, { kind: 'projection', sessionId, key, value });
+        } else {
+          read.version += 1;
+        }
+        requestPush();
+      }));
+    }
+  } catch (e) {
+    logWarn(ctx, '会话投影事件不可用：' + String((e && e.message) || e));
+  }
+  return () => {
+    for (const dispose of disposers) {
+      try { dispose(); } catch (e) { }
+    }
+  };
+}
+
+function rowFingerprint(row) {
+  const values = row && row.projections && row.projections.values ? row.projections.values : {};
+  const metadata = values.sessionListMetadata || {};
+  return [
+    row && row.updatedAt,
+    row && row.running,
+    row && row.blank,
+    row && row.agentAvailable,
+    row && row.title,
+    row && row.formatStatus,
+    metadata.lastPromptAt,
+    values.title,
+  ].join('|');
+}
+
+function startReconcile(ctx, read, requestPush) {
+  const timer = setInterval(() => {
+    const before = new Map(read.rows);
+    ensureRows(ctx, read, true)
+      .then(() => {
+        for (const [id, row] of read.rows) {
+          const previous = before.get(id);
+          if (!previous || rowFingerprint(previous) !== rowFingerprint(row)) read.dirty.add(id);
+        }
+        for (const id of before.keys()) if (!read.rows.has(id)) read.dirty.add(id);
+        requestPush();
+      })
+      .catch(() => undefined);
+  }, RECONCILE_MS);
+  if (timer && typeof timer.unref === 'function') timer.unref();
+  return () => clearInterval(timer);
 }
 
 function buildChildIndex(items) {
@@ -603,10 +809,16 @@ async function buildCard(ctx, summary, context) {
   }
 
   const shouldReadDetail = context.detail === true;
+  const dirty = context.dirty instanceof Set ? context.dirty : new Set();
   let observation = null;
   if (shouldReadDetail) {
     const cached = detailCache.get(summary.id);
-    if (cached && cached.updatedAt === summary.updatedAt && now - cached.at < DETAIL_TTL_MS) {
+    const reusable = cached
+      && cached.observation
+      && cached.updatedAt === summary.updatedAt
+      && !dirty.has(summary.id)
+      && now - cached.at < DETAIL_FALLBACK_MS;
+    if (reusable) {
       observation = cached.observation;
     } else {
       const query = getService(ctx, 'sessionQuery');
@@ -730,22 +942,18 @@ function snapshotRevision(cards, archivedCount) {
     .digest('hex');
 }
 
-async function buildSnapshot(ctx, includeArchived, caches, days, force) {
+async function buildSnapshot(ctx, includeArchived, read, days, force) {
   const now = Date.now();
-  const listed = await listSummariesCached(
-    ctx,
-    caches,
-    includeArchived ? ARCHIVED_SUMMARY_TTL_MS : SNAPSHOT_TTL_MS,
-    force,
-  );
-  const items = listed.items.filter((item) => item.id);
+  await ensureRows(ctx, read, force === true);
+  const versionAtStart = read.version;
+  const items = [...read.rows.values()].filter((item) => item.id);
   const index = readWorkspaceIndex(ctx);
   const nonSubagent = items.filter((item) => item.origin !== 'subagent' && item.blank !== true);
   const windowMs = days > 0 ? days * DAY_MS : 0;
   const selected = nonSubagent.filter((item) => {
     if (includeArchived) return index.archived.has(item.id);
     if (index.archived.has(item.id)) return false;
-    if (!windowMs || listed.source === 'sessionQuery') return true;
+    if (!windowMs || read.source === 'sessionQuery') return true;
     return item.updatedAt >= now - windowMs || item.agentAvailable;
   });
   const rich = new Set();
@@ -768,8 +976,9 @@ async function buildSnapshot(ctx, includeArchived, caches, days, force) {
     parentTitles,
     includeArchived,
     detail: rich.has(summary.id),
-    detailCache: caches.detail,
-    activityCache: caches.activity,
+    detailCache: read.detail,
+    activityCache: read.activity,
+    dirty: read.dirty,
     titleFollow,
     now,
   }))).filter(Boolean);
@@ -780,14 +989,16 @@ async function buildSnapshot(ctx, includeArchived, caches, days, force) {
   const archivedCount = items.filter((item) => (
     item.origin !== 'subagent' && item.blank !== true && index.archived.has(item.id)
   )).length;
+  if (read.version === versionAtStart) read.dirty.clear();
   return {
     revision: snapshotRevision(cards, archivedCount),
     generatedAt: Date.now(),
     cards,
     archivedCount,
     titleFollow: titleFollow.seen ? titleFollow.allPrompts : null,
-    source: listed.source,
+    source: read.source,
     days: days > 0 ? days : 0,
+    version: versionAtStart,
   };
 }
 
@@ -796,20 +1007,37 @@ function childChildren(index, parentId) {
   return childActivity(list);
 }
 
-function makeSnapshotCache(ctx) {
+function makeSnapshotCache(ctx, read, notify) {
   const cache = new Map();
   const failures = new Map();
-  const caches = { detail: new Map(), activity: new Map(), summaries: null, summaryPending: null };
   const pending = new Map();
+  let deferred = null;
+  let lastBuildAt = 0;
+
+  function buildSoon(key, includeArchived, days) {
+    if (deferred) return;
+    const wait = Math.max(0, MIN_BUILD_INTERVAL_MS - (Date.now() - lastBuildAt));
+    if (wait === 0) {
+      startBuild(key, includeArchived, days, false).catch(() => undefined);
+      return;
+    }
+    deferred = setTimeout(() => {
+      deferred = null;
+      startBuild(key, includeArchived, days, false).catch(() => undefined);
+    }, wait);
+    if (deferred && typeof deferred.unref === 'function') deferred.unref();
+  }
 
   function startBuild(key, includeArchived, days, force) {
     if (pending.has(key)) return pending.get(key);
-    const task = buildSnapshot(ctx, includeArchived, caches, days, force)
+    lastBuildAt = Date.now();
+    const task = buildSnapshot(ctx, includeArchived, read, days, force)
       .then((value) => {
         failures.delete(key);
         cache.delete(key);
         cache.set(key, {
           at: Date.now(),
+          version: value.version,
           value,
           degraded: value && value.source === 'sessionQuery',
         });
@@ -824,6 +1052,7 @@ function makeSnapshotCache(ctx) {
         if (!includeArchived && !cache.has('archived') && !pending.has('archived')) {
           startBuild('archived', true, 0, false).catch(() => undefined);
         }
+        notify();
         return value;
       })
       .catch((error) => {
@@ -840,9 +1069,11 @@ function makeSnapshotCache(ctx) {
     const current = cache.get(key);
     if (!force && current) {
       const ttl = current.degraded ? 1500 : SNAPSHOT_TTL_MS;
-      const stale = Date.now() - current.at >= ttl;
-      if (stale) startBuild(key, includeArchived, days, false).catch(() => undefined);
-      return stale ? { ...current.value, stale: true } : current.value;
+      const expired = Date.now() - current.at >= ttl;
+      const outdated = current.version !== read.version;
+      if (!expired && !outdated) return current.value;
+      buildSoon(key, includeArchived, days);
+      return { ...current.value, stale: true };
     }
     if (force) return startBuild(key, includeArchived, days, true);
     const failed = failures.get(key);
@@ -868,7 +1099,7 @@ function writeEvent(res, event, data) {
   res.write('data: ' + JSON.stringify(data) + '\n\n');
 }
 
-async function handleEvents(ctx, req, res, getSnapshot, days, streams) {
+async function handleEvents(ctx, req, res, getSnapshot, days, connections) {
   res.writeHead(200, {
     'content-type': 'text/event-stream; charset=utf-8',
     'cache-control': 'no-store, no-transform',
@@ -877,7 +1108,6 @@ async function handleEvents(ctx, req, res, getSnapshot, days, streams) {
   });
   if (typeof res.flushHeaders === 'function') res.flushHeaders();
   res.write('retry: 3000\n\n');
-  streams.add(res);
   let closed = false;
   let lastCards = new Map();
   let lastRevision = '';
@@ -888,14 +1118,10 @@ async function handleEvents(ctx, req, res, getSnapshot, days, streams) {
   const close = () => {
     if (closed) return;
     closed = true;
-    streams.delete(res);
+    connections.delete(connection);
     if (timer) clearInterval(timer);
     if (heartbeat) clearInterval(heartbeat);
   };
-  req.on('close', close);
-  req.on('close', () => { try { res.end(); } catch (e) { } });
-  res.on('close', close);
-
   const tick = async () => {
     if (closed) return;
     try {
@@ -932,6 +1158,11 @@ async function handleEvents(ctx, req, res, getSnapshot, days, streams) {
     }
   };
 
+  const connection = { res, tick };
+  connections.add(connection);
+  req.on('close', close);
+  req.on('close', () => { try { res.end(); } catch (e) { } });
+  res.on('close', close);
   await tick();
   timer = setInterval(tick, 1000);
   heartbeat = setInterval(() => {
@@ -940,8 +1171,17 @@ async function handleEvents(ctx, req, res, getSnapshot, days, streams) {
 }
 
 export function apply(ctx) {
-  const getSnapshot = makeSnapshotCache(ctx);
-  const streams = new Set();
+  const read = createReadState();
+  const connections = new Set();
+  const requestPush = () => {
+    for (const connection of connections) {
+      try { connection.tick().catch(() => undefined); } catch (e) { }
+    }
+  };
+  const getSnapshot = makeSnapshotCache(ctx, read, requestPush);
+
+  ctx.effect(() => subscribeSessionEvents(ctx, read, requestPush), 'dsh-task-board: session events');
+  ctx.effect(() => startReconcile(ctx, read, requestPush), 'dsh-task-board: reconcile');
 
   async function handleRequest(req, res) {
     const url = new URL(req.url || '/', 'http://127.0.0.1');
@@ -968,7 +1208,7 @@ export function apply(ctx) {
       }
       if (sub === '/events') {
         const days = Math.max(0, Math.min(3650, asInt(url.searchParams.get('days'), 0)));
-        return await handleEvents(ctx, req, res, getSnapshot, days, streams);
+        return await handleEvents(ctx, req, res, getSnapshot, days, connections);
       }
       return json(res, 404, { ok: false, error: 'not found', path: sub });
     } catch (e) {
@@ -984,10 +1224,10 @@ export function apply(ctx) {
 
   ctx.effect(() => {
     return () => {
-      for (const res of streams) {
-        try { res.end(); } catch (e) { }
+      for (const connection of connections) {
+        try { connection.res.end(); } catch (e) { }
       }
-      streams.clear();
+      connections.clear();
     };
   }, 'dsh-task-board: close event streams');
 
