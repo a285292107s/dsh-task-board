@@ -641,14 +641,20 @@ body[data-ds-dark-theme] .kb{
     function currentBlankId(list) {
       if (!list || !list.byId || !Array.isArray(list.ids)) return null;
       let fallback = null;
+      let newest = null;
       let blankCount = 0;
+      const fresh = Date.now() - 10 * 60 * 1000;
       for (const id of list.ids) {
         const row = list.byId[id];
         if (!row || row.blank !== true) continue;
         blankCount += 1;
         if (row.retainedBy && Number(row.retainedBy.mainView) > 0) return String(id);
         if (!fallback) fallback = String(id);
+        if (Number(row.updatedAt) >= fresh && (!newest || Number(row.updatedAt) > newest.at)) {
+          newest = { id: String(id), at: Number(row.updatedAt) };
+        }
       }
+      if (newest) return newest.id;
       return blankCount === 1 ? fallback : null;
     }
 
