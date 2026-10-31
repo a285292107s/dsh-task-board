@@ -12,324 +12,158 @@ window.__ModuleLoader__.load({
   color-scheme:light;
   --serif:'Instrument Serif','Iowan Old Style',Georgia,'Times New Roman',serif;
   --ui:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Microsoft YaHei',sans-serif;
-  --ink:#16150f; --ink2:#5c584e; --ink3:#8b877a;
-  --meta:color-mix(in srgb,var(--ink) 67%,var(--card));
-  --canvas:#f2f1ee; --lane:#e9e8e4; --card:#ffffff;
-  --line:#dcd8ce; --line2:#c4c0b3;
-  --accent:#1d4ed8; --accent-ink:#ffffff;
-  --hi:#b23a2b; --med:#96660f; --soft:#2f7d52; --done:#1f5f8b;
-  --t-blue:#1f5ae0; --t-teal:#0a7d72; --t-amber:#8f5c0e; --t-magenta:#a63a6c; --t-green:#25784c;
-  --m1:#1d4ed8; --m2:#0a7d72; --m3:#8f5c0e; --m4:#a63a6c; --m5:#25784c;
+  --ink:#16150f;--ink2:#5c584e;--ink3:#8b877a;
+  --canvas:#f2f1ee;--lane:#e9e8e4;--card:#ffffff;
+  --line:#dcd8ce;--line2:#c4c0b3;
+  --accent:#1d4ed8;--accent-ink:#ffffff;
+  --hi:#b23a2b;--med:#96660f;--soft:#2f7d52;--done:#1f5f8b;
+  --q:#8f5c0e;--ok:#25784c;--warn:#b23a2b;
   --shadow-sm:0 1px 2px rgba(22,21,15,.07);
-  --shadow-lift:0 16px 36px -14px rgba(22,21,15,.32),0 3px 8px rgba(22,21,15,.08);
-  --shadow-drawer:-30px 0 70px -30px rgba(22,21,15,.34);
+  --shadow-lift:0 14px 30px -18px rgba(22,21,15,.35),0 2px 6px rgba(22,21,15,.06);
   position:relative;height:100%;min-height:0;display:flex;flex-direction:column;
   background:var(--canvas);color:var(--ink);
-  font-family:var(--dsw-font-family,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif);
-  font-size:14px;line-height:1.45;overflow:hidden;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  font-family:var(--ui);font-size:14px;line-height:1.45;overflow:hidden;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
 }
 body[data-ds-dark-theme] .kb{
   color-scheme:dark;
   --ink:#f2f0e9;--ink2:#aaa69c;--ink3:#726f66;
-  --meta:color-mix(in srgb,var(--ink) 62%,var(--card));
   --canvas:#0e0f12;--lane:#15161a;--card:#1e2026;
   --line:#292b31;--line2:#3b3e46;
   --accent:#7d9bff;--accent-ink:#0e0f12;
   --hi:#ef7f6c;--med:#d7a63f;--soft:#63c08d;--done:#6fb6e6;
-  --t-blue:#8aa9ff;--t-teal:#4fd2c1;--t-amber:#e3b75c;--t-magenta:#ef8cbb;--t-green:#6bcb93;
-  --m1:#8aa9ff;--m2:#4fd2c1;--m3:#e3b75c;--m4:#ef8cbb;--m5:#6bcb93;
-  --shadow-sm:0 1px 2px rgba(0,0,0,.45);
-  --shadow-lift:0 22px 48px -18px rgba(0,0,0,.74),0 3px 10px rgba(0,0,0,.42);
-  --shadow-drawer:-30px 0 70px -26px rgba(0,0,0,.7);
+  --q:#e3b75c;--ok:#6bcb93;--warn:#ef7f6c;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.25);
+  --shadow-lift:0 18px 36px -18px rgba(0,0,0,.7),0 2px 8px rgba(0,0,0,.28);
 }
 .kb *{box-sizing:border-box}
-.kb ::selection{background:color-mix(in srgb,var(--accent) 26%,transparent)}
-.kb :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
-.kb-ico{fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;display:block;flex:none}
-
-.kb-top{padding:24px 30px 0;flex:none}
-.kb-titlebar{display:flex;align-items:flex-end;gap:20px;justify-content:space-between;flex-wrap:wrap}
-.kb-titlewrap{display:flex;flex-direction:column;gap:6px;min-width:0}
-.kb-title{font-family:var(--serif);font-weight:400;font-size:clamp(28px,3vw,38px);line-height:1;letter-spacing:-.015em;margin:0;display:flex;align-items:center;gap:12px}
-.kb-switcher{display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 10px 0 12px;border:1px solid var(--line);border-radius:99px;background:transparent;color:var(--ink2);font-family:var(--ui);font-weight:500;font-size:13px;letter-spacing:0;cursor:pointer;position:relative}
-.kb-switcher:hover{border-color:var(--line2);color:var(--ink)}
-.kb-world{position:relative}
-.kb-menu{position:absolute;top:calc(100% + 6px);left:0;z-index:60;min-width:240px;max-height:320px;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-lift);padding:6px}
-.kb-menuitem{display:flex;flex-direction:column;gap:1px;width:100%;text-align:left;padding:7px 10px;border-radius:8px;border:none;background:transparent;color:var(--ink);font-family:var(--ui);font-size:13px;cursor:pointer}
-.kb-menuitem:hover{background:color-mix(in srgb,var(--ink) 7%,transparent)}
-.kb-menuitem[aria-current="true"]{background:color-mix(in srgb,var(--accent) 12%,transparent)}
-.kb-menuitem b{font-size:13px;font-weight:600}
-.kb-menuitem small{color:var(--ink3);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:320px}
-.kb-sub{margin:0;color:var(--ink2);font-size:12.5px;display:flex;flex-wrap:wrap;align-items:center;gap:0}
-.kb-sub b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
-.kb-stat{display:inline-flex;align-items:baseline;gap:5px}
-.kb-sep{margin:0 9px;color:var(--ink3);opacity:.7}
-.kb-actions{display:flex;align-items:center;gap:8px}
-.kb-flow{display:flex;height:8px;gap:3px;margin:16px 0 0}
-.kb-flowseg{height:100%;border-radius:99px;transition:flex-grow .35s cubic-bezier(.22,.61,.36,1)}
-.kb-toolbar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:14px 0 0;padding-bottom:14px}
-
-.kb-btn{height:34px;display:inline-flex;align-items:center;gap:7px;padding:0 15px;border-radius:99px;border:1px solid transparent;font:inherit;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;transition:transform .12s ease,background .15s ease,box-shadow .15s ease,border-color .15s ease,color .15s ease}
-.kb-btn--primary{background:var(--accent);color:var(--accent-ink)}
-.kb-btn--primary:hover{transform:translateY(-1px)}
-.kb-btn--primary:active{transform:translateY(0)}
-.kb-btn--ghost{background:transparent;color:var(--ink2);border-color:var(--line)}
-.kb-btn--ghost:hover{border-color:var(--line2);color:var(--ink)}
-.kb-btn--soft{background:color-mix(in srgb,var(--ink) 6%,transparent);color:var(--ink)}
-.kb-btn--soft:hover{background:color-mix(in srgb,var(--ink) 10%,transparent)}
-.kb-btn--sm{height:30px;padding:0 12px;font-size:12.5px}
-.kb-btn:disabled{opacity:.42;cursor:not-allowed}
-.kb-btn:disabled:hover{transform:none}
-.kb-iconbtn{width:32px;height:32px;padding:0;justify-content:center;border-radius:99px;background:transparent;color:var(--ink2);border:1px solid transparent;cursor:pointer;display:inline-flex;align-items:center}
-.kb-iconbtn:hover{background:color-mix(in srgb,var(--ink) 7%,transparent);color:var(--ink)}
-.kb-search{position:relative;flex:1 1 180px;max-width:300px;display:flex;align-items:center}
-.kb-search svg{position:absolute;left:11px;color:var(--ink3);pointer-events:none}
-.kb-search input{width:100%;height:34px;border:1px solid var(--line);background:var(--card);border-radius:99px;padding:0 12px 0 34px;font:inherit;font-size:13px;color:var(--ink);outline:none;transition:border-color .15s ease}
-.kb-search input::placeholder{color:var(--ink3)}
-.kb-search input:focus{border-color:var(--ink3)}
-.kb-pills{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.kb-pill{height:30px;display:inline-flex;align-items:center;gap:6px;padding:0 11px;border-radius:99px;border:1px solid var(--line);background:transparent;color:var(--ink2);font:inherit;font-size:12.5px;cursor:pointer;transition:border-color .15s ease,color .15s ease,background .15s ease}
-.kb-pill:hover{border-color:var(--line2);color:var(--ink)}
-.kb-pill[aria-pressed="true"]{background:var(--ink);color:var(--canvas);border-color:var(--ink)}
-.kb-pill .kb-dot{width:7px;height:7px;border-radius:99px;background:var(--c);flex:none}
-.kb-pill--alert[aria-pressed="true"]{background:var(--hi);border-color:var(--hi);color:#fff}
-.kb-selectwrap{position:relative;display:inline-flex;align-items:center}
-.kb-selectwrap svg{position:absolute;right:10px;color:var(--ink3);pointer-events:none}
-.kb-select{height:30px;border:1px solid var(--line);border-radius:99px;background:transparent;color:var(--ink2);font:inherit;font-size:12.5px;padding:0 30px 0 12px;appearance:none;cursor:pointer;transition:border-color .15s ease,color .15s ease}
-.kb-select:hover{border-color:var(--line2);color:var(--ink)}
-.kb select option,.kb-select option,.kb-select2 option{background-color:var(--card);color:var(--ink)}
-.kb-grow{flex:1}
-
-.kb-banner{flex:none;margin:0 30px;padding:9px 14px;border-radius:10px;font-size:12.5px;display:flex;align-items:center;gap:10px;background:color-mix(in srgb,var(--med) 14%,transparent);color:color-mix(in srgb,var(--med) 70%,var(--ink))}
-.kb-banner[data-kind="error"]{background:color-mix(in srgb,var(--hi) 14%,transparent);color:color-mix(in srgb,var(--hi) 72%,var(--ink))}
-.kb-banner .kb-btn{margin-left:auto}
-.kb-banner .kb-btn+.kb-btn{margin-left:0}
-
-.kb-board{flex:1;min-height:0;display:flex;gap:14px;padding:4px 24px 24px;overflow-x:auto;overflow-y:hidden;align-items:stretch;scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--ink) 22%,transparent) transparent}
-.kb-board::-webkit-scrollbar{height:9px}
-.kb-board::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--ink) 20%,transparent);border-radius:99px}
-.kb-board::-webkit-scrollbar-track{background:transparent}
-.kb-lane{flex:1 1 0;min-width:196px;max-width:360px;display:flex;flex-direction:column;min-height:0;background:var(--lane);border-radius:15px;max-height:100%;transition:background .18s ease}
-.kb-lane[data-over="true"]{background:color-mix(in srgb,var(--accent) 7%,var(--lane))}
-.kb-lanehead{flex:none;padding:13px 12px 9px 15px;display:flex;flex-direction:column;gap:2px}
-.kb-lanetitlerow{display:flex;align-items:center;gap:8px}
-.kb-lanedot{width:8px;height:8px;border-radius:99px;background:var(--cdot);flex:none}
-.kb-lanetitle{font-family:var(--serif);font-size:19px;font-weight:400;line-height:1.05;margin:0;letter-spacing:-.01em;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.kb-lanetag{font-size:10.5px;font-weight:600;color:var(--ink3);background:color-mix(in srgb,var(--ink) 7%,transparent);border-radius:6px;padding:1px 6px;flex:none}
-.kb-count{font-variant-numeric:tabular-nums;font-size:12px;color:var(--meta);background:color-mix(in srgb,var(--ink) 8%,transparent);border-radius:99px;padding:1px 8px;font-weight:600;flex:none}
-.kb-coladd{width:26px;height:26px;border-radius:99px;border:none;background:transparent;color:var(--ink3);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex:none}
-.kb-coladd:hover{background:color-mix(in srgb,var(--ink) 9%,transparent);color:var(--ink)}
-.kb-lanebody{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:2px 10px 4px;display:flex;flex-direction:column;gap:9px;scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--ink) 20%,transparent) transparent}
-.kb-lanebody::-webkit-scrollbar{width:8px}
-.kb-lanebody::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--ink) 18%,transparent);border-radius:99px;border:2px solid transparent;background-clip:padding-box}
-.kb-lanefoot{flex:none;padding:0 10px 10px}
-
-.kb-card{position:relative;background:var(--card);border:0;border-radius:12px;padding:12px 13px 11px;cursor:grab;transition:transform .14s ease,box-shadow .14s ease;outline-offset:2px}
-.kb-card:hover{box-shadow:var(--shadow-sm);transform:translateY(-1px)}
-.kb-card:active{cursor:grabbing}
-.kb-card::before{content:'';position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:99px;background:transparent}
-.kb-card[data-pri="high"]::before{background:var(--hi)}
-.kb-card[data-pri="medium"]::before{background:var(--med)}
-.kb-card[data-pri="low"]::before{background:var(--line2)}
-.kb-cardtop{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px}
-.kb-badge{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:99px;font-size:11px;font-weight:600;background:color-mix(in srgb,var(--bt) 15%,transparent);color:var(--bt)}
-.kb-badge .kb-bdot{width:5px;height:5px;border-radius:99px;background:var(--bt)}
-.kb-badge[data-tone="todo"]{--bt:var(--ink3)}
-.kb-badge[data-tone="running"]{--bt:var(--accent)}
-.kb-badge[data-tone="review"]{--bt:var(--med)}
-.kb-badge[data-tone="signoff"]{--bt:var(--soft)}
-.kb-badge[data-tone="done"]{--bt:var(--done)}
-.kb-badge[data-tone="warn"]{--bt:var(--med)}
-.kb-badge[data-tone="error"]{--bt:var(--hi)}
-.kb-badge[data-tone="idle"]{--bt:var(--ink3)}
-.kb-chips{display:flex;flex-wrap:wrap;gap:6px}
-.kb-chip{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px 0 7px;border-radius:99px;font-size:11px;font-weight:500;background:color-mix(in srgb,var(--c) 13%,transparent);color:var(--c)}
-.kb-chipdot{width:5px;height:5px;border-radius:99px;background:var(--c);display:inline-block;flex:none}
-.kb-chip[data-tone="blue"]{--c:var(--t-blue)}
-.kb-chip[data-tone="teal"]{--c:var(--t-teal)}
-.kb-chip[data-tone="amber"]{--c:var(--t-amber)}
-.kb-chip[data-tone="magenta"]{--c:var(--t-magenta)}
-.kb-chip[data-tone="green"]{--c:var(--t-green)}
-.kb-cardtitle{margin:0;font-size:14px;line-height:1.4;font-weight:500;color:var(--ink);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
-.kb-cardmeta{display:flex;align-items:center;gap:10px;margin-top:10px;color:var(--meta);font-size:11.5px;min-height:21px;flex-wrap:wrap}
-.kb-metaitem{display:inline-flex;align-items:center;gap:4px;font-variant-numeric:tabular-nums}
-.kb-duetag{display:inline-flex;align-items:center;gap:4px;font-variant-numeric:tabular-nums}
-.kb-duetag[data-state="overdue"]{color:var(--hi);font-weight:600}
-.kb-duetag[data-state="today"]{color:var(--accent);font-weight:600}
-.kb-spacer{flex:1}
-.kb-wtbadge{display:inline-flex;align-items:center;gap:4px;min-width:0;max-width:190px;padding:1px 7px 1px 6px;border-radius:999px;background:color-mix(in srgb,var(--ink) 4.5%,transparent);color:var(--ink2);font-family:ui-monospace,SFMono-Regular,Consolas,'Liberation Mono',monospace;font-size:10.5px;font-weight:600;line-height:1.65;font-variant-numeric:tabular-nums}
-.kb-wtbadge .kb-ico{width:11px;height:11px;color:var(--ink3)}
-.kb-wtbadge>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-
-.kb-ph{height:70px;border-radius:12px;border:1.5px dashed color-mix(in srgb,var(--accent) 55%,transparent);background:color-mix(in srgb,var(--accent) 7%,transparent)}
-.kb-ghost{position:fixed;top:0;left:0;z-index:80;pointer-events:none;will-change:transform}
-.kb-ghost .kb-card{box-shadow:var(--shadow-lift);transform:rotate(1.4deg) scale(1.02);cursor:grabbing}
-
-.kb-composer{background:var(--card);border:1px solid var(--accent);border-radius:12px;padding:10px 11px;display:flex;flex-direction:column;gap:8px;box-shadow:var(--shadow-sm)}
-.kb-composer textarea{border:none;outline:none;resize:none;font:inherit;font-size:14px;line-height:1.4;color:var(--ink);background:transparent;min-height:44px;padding:0}
-.kb-composerrow{display:flex;justify-content:flex-end;gap:8px}
-.kb-addrow{display:flex;align-items:center;gap:7px;width:100%;padding:9px 10px;border-radius:10px;border:none;background:transparent;color:var(--meta);font:inherit;font-size:13px;cursor:pointer;text-align:left;transition:background .15s ease,color .15s ease}
-.kb-addrow:hover{background:color-mix(in srgb,var(--ink) 6%,transparent);color:var(--ink)}
-.kb-laneempty{margin:auto 0;padding:22px 10px;text-align:center;color:var(--meta);display:flex;flex-direction:column;align-items:center;gap:4px}
-.kb-laneempty .kb-ico{opacity:.45;margin-bottom:2px}
-.kb-emptytitle{font-family:var(--serif);font-size:16px;color:var(--ink2)}
-
-.kb-scrim{position:absolute;inset:0;background:color-mix(in srgb,#0b0b0d 22%,transparent);z-index:30;animation:kb-fade .22s ease both}
-.kb-drawer{position:absolute;top:0;right:0;bottom:0;width:min(540px,96%);background:var(--card);border-left:1px solid var(--line);box-shadow:var(--shadow-drawer);z-index:40;display:flex;flex-direction:column;animation:kb-slide .26s cubic-bezier(.22,.61,.36,1) both}
-.kb-drawerhead{flex:none;display:flex;align-items:center;gap:10px;padding:14px 14px 6px 24px}
-.kb-drawerbcrumb{display:inline-flex;align-items:center;gap:7px;color:var(--ink2);font-size:12.5px;flex:1;min-width:0}
-.kb-drawerbcrumb .kb-dot{width:7px;height:7px;border-radius:99px;background:var(--cdot);flex:none}
-.kb-drawerstatus{flex:none;padding:0 24px 4px}
-.kb-runline{display:flex;flex-direction:column;gap:4px;padding:9px 12px;border-radius:9px;font-size:12.5px;line-height:1.5;color:var(--ink2);background:color-mix(in srgb,var(--ink) 4%,transparent)}
-.kb-runmain{display:flex;gap:9px;align-items:flex-start}
-.kb-runmain .kb-ico{margin-top:1px}
-.kb-runmeta{padding-left:23px;font-size:11.5px;opacity:.82;font-variant-numeric:tabular-nums;word-break:break-word}
-.kb-runline[data-tone="accent"]{background:color-mix(in srgb,var(--accent) 9%,transparent);color:color-mix(in srgb,var(--accent) 66%,var(--ink))}
-.kb-runline[data-tone="warn"]{background:color-mix(in srgb,var(--med) 11%,transparent);color:color-mix(in srgb,var(--med) 68%,var(--ink))}
-.kb-runline[data-tone="review"]{background:color-mix(in srgb,var(--med) 8%,transparent);color:color-mix(in srgb,var(--med) 60%,var(--ink))}
-.kb-runline[data-tone="signoff"]{background:color-mix(in srgb,var(--soft) 11%,transparent);color:color-mix(in srgb,var(--soft) 66%,var(--ink))}
-.kb-runline[data-tone="done"]{background:color-mix(in srgb,var(--done) 9%,transparent);color:color-mix(in srgb,var(--done) 62%,var(--ink))}
-.kb-runline[data-tone="error"]{background:color-mix(in srgb,var(--hi) 10%,transparent);color:color-mix(in srgb,var(--hi) 70%,var(--ink))}
-.kb-drawerbody{flex:1;min-height:0;overflow-y:auto;padding:0 24px 22px;display:flex;flex-direction:column;scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--ink) 20%,transparent) transparent}
-.kb-drawerbody::-webkit-scrollbar{width:9px}
-.kb-drawerbody::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--ink) 18%,transparent);border-radius:99px;border:2px solid transparent;background-clip:padding-box}
-.kb-sec{display:flex;flex-direction:column;gap:12px;padding:16px 0;border-top:1px solid var(--line)}
-.kb-sec:first-child{border-top:none;padding-top:10px}
-.kb-seclabel{display:flex;align-items:baseline;gap:9px}
-.kb-secnum{font-family:var(--serif);font-size:15px;line-height:1;color:var(--meta);font-variant-numeric:tabular-nums;flex:none}
-.kb-sectitle{font-size:11.5px;font-weight:600;letter-spacing:.06em;color:var(--meta)}
-.kb-sechead{display:flex;align-items:center;gap:9px;width:100%;padding:0;border:none;background:transparent;font:inherit;color:var(--ink);cursor:pointer;text-align:left}
-.kb-sechead .kb-ico{color:var(--ink3);transition:transform .16s ease;flex:none}
-.kb-sechead[aria-expanded="true"] .kb-ico{transform:rotate(180deg)}
-.kb-secsum{flex:1;min-width:0;font-size:11.5px;font-weight:400;letter-spacing:0;color:var(--meta);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.kb-secbody{display:flex;flex-direction:column;gap:12px}
-.kb-titleinput{width:100%;min-height:36px;border:none;outline:none;background:transparent;resize:none;font-family:var(--serif);font-size:26px;line-height:1.16;color:var(--ink);padding:0;margin:0;overflow:hidden;caret-color:var(--accent)}
-.kb-titleinput:focus,.kb-titleinput:focus-visible{outline:none}
-.kb-fieldgroup{display:flex;flex-direction:column;gap:6px}
-.kb-metagrid{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px}
-.kb-triple{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
-.kb-field{display:flex;flex-direction:column;gap:5px;min-width:0}
-.kb-field>label{font-size:11.5px;color:var(--meta);font-weight:600}
-.kb-input,.kb-area,.kb-select2{width:100%;font:inherit;font-size:13px;color:var(--ink);background:color-mix(in srgb,var(--ink) 4%,transparent);border:1px solid transparent;border-radius:9px;padding:7px 10px;outline:none;transition:border-color .15s ease,background .15s ease}
-.kb-input:focus,.kb-area:focus,.kb-select2:focus{border-color:var(--accent);background-color:var(--card)}
-.kb-select2{appearance:none;cursor:pointer;padding-right:30px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16'%3E%3Cpath d='M4 6.2 8 10l4-3.8' fill='none' stroke='%238b877a' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}
-body[data-ds-dark-theme] .kb .kb-input,body[data-ds-dark-theme] .kb .kb-area,body[data-ds-dark-theme] .kb .kb-select2{background-color:color-mix(in srgb,var(--ink) 8%,transparent)}
-body[data-ds-dark-theme] .kb .kb-select2{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16'%3E%3Cpath d='M4 6.2 8 10l4-3.8' fill='none' stroke='%23aaa69c' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")}
-body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-area:focus,body[data-ds-dark-theme] .kb .kb-select2:focus{background-color:color-mix(in srgb,var(--ink) 6%,var(--card))}
-.kb-area{resize:vertical;min-height:70px;line-height:1.55}
-.kb-labels{display:flex;flex-wrap:wrap;gap:7px}
-.kb-labeltoggle{height:26px;padding:0 10px;border-radius:99px;border:1px solid var(--line);background:transparent;color:var(--ink3);font:inherit;font-size:12px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .14s ease,border-color .14s ease,color .14s ease}
-.kb-labeltoggle .kb-chipdot{background:var(--c)}
-.kb-labeltoggle:hover{border-color:var(--line2)}
-.kb-labeltoggle[aria-pressed="true"]{background:color-mix(in srgb,var(--c) 15%,transparent);border-color:color-mix(in srgb,var(--c) 48%,transparent);color:var(--c)}
-.kb-hint{margin:0;font-size:11.5px;line-height:1.55;color:var(--meta)}
-.kb-hint[data-kind="warn"]{color:color-mix(in srgb,var(--med) 72%,var(--ink))}
-.kb-hint code,.kb-rowval code{font-family:ui-monospace,SFMono-Regular,Consolas,'Liberation Mono',monospace;font-size:11.5px}
-.kb-prompt{border:1px solid var(--line);border-radius:9px;background:color-mix(in srgb,var(--ink) 3%,transparent)}
-.kb-prompt summary{display:flex;align-items:center;gap:7px;padding:8px 11px;list-style:none;cursor:pointer;font-size:11.5px;font-weight:600;color:var(--meta)}
-.kb-prompt summary::-webkit-details-marker{display:none}
-.kb-prompt summary .kb-ico{color:var(--ink3);transition:transform .16s ease}
-.kb-prompt[open] summary .kb-ico{transform:rotate(180deg)}
-.kb-prompt pre{margin:0;padding:0 12px 12px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11.5px;line-height:1.65;color:var(--ink2);white-space:pre-wrap;word-break:break-word;max-height:230px;overflow:auto}
-.kb-rows{display:flex;flex-direction:column}
-.kb-row{display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding:6px 0;border-bottom:1px solid color-mix(in srgb,var(--line) 55%,transparent);font-size:12.5px}
-.kb-row:last-child{border-bottom:none}
-.kb-rowkey{flex:none;color:var(--meta)}
-.kb-rowval{min-width:0;text-align:right;color:var(--ink);word-break:break-word}
-.kb-switchrow{display:flex;align-items:flex-start;gap:9px;font-size:12.5px;line-height:1.5;color:var(--ink2);cursor:pointer}
-.kb-switchrow input{margin:2px 0 0;accent-color:var(--accent);flex:none}
-.kb-drawerfoot{flex:none;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 18px 10px 24px;border-top:1px solid var(--line);background:var(--card);color:var(--meta);font-size:12px}
-.kb-save{display:inline-flex;align-items:center;gap:6px;min-width:0}
-.kb-save[data-state="error"]{color:color-mix(in srgb,var(--med) 74%,var(--ink))}
-.kb-save[data-state="pending"]{color:var(--meta)}
-.kb-footacts{display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap;justify-content:flex-end}
-.kb-confirm{color:var(--ink2);font-size:12px}
-.kb-danger{color:var(--hi);background:none;border:none;font:inherit;font-size:12.5px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:4px 6px;border-radius:7px}
-.kb-danger:hover{background:color-mix(in srgb,var(--hi) 10%,transparent)}
-.kb-btn--danger{background:var(--hi);color:#fff}
-.kb-btn--danger:hover{transform:translateY(-1px)}
-
-@keyframes kb-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-@keyframes kb-fade{from{opacity:0}to{opacity:1}}
-@keyframes kb-slide{from{transform:translateX(34px);opacity:.45}to{transform:none;opacity:1}}
-.kb-anim{animation:kb-in .42s cubic-bezier(.22,.61,.36,1) both}
-@media (max-width:860px){
-  .kb-top{padding:16px 16px 0}
-  .kb-board{padding:2px 16px 18px;gap:12px}
-  .kb-lane{flex:0 0 min(84vw,320px);min-width:0;max-width:none}
-  .kb-drawer{width:100%}
-  .kb-drawerhead{padding:12px 10px 6px 16px}
-  .kb-drawerstatus{padding:0 16px 4px}
-  .kb-drawerbody{padding:0 16px 18px}
-  .kb-drawerfoot{padding:10px 16px}
-  .kb-metagrid,.kb-triple{grid-template-columns:1fr}
-  .kb-title{font-size:28px}
-}
-@media (max-width:520px){
-  .kb-sechead{flex-wrap:wrap}
-  .kb-secsum{order:9;flex:1 1 100%;text-align:left}
-  .kb-drawerfoot{padding:9px 14px}
-  .kb-drawerfoot .kb-btn{height:38px;padding:0 15px}
-  .kb-drawerfoot .kb-danger{padding:9px 8px;font-size:13px}
-  .kb-save{font-size:11.5px}
+.kb button,.kb input,.kb select{font:inherit;color:inherit}
+.kb button{cursor:pointer}
+.kb-head{flex:none;padding:18px 22px 13px;border-bottom:1px solid var(--line);background:var(--canvas)}
+.kb-headrow{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}
+.kb-brand{min-width:0}
+.kb-kicker{margin:0 0 3px;color:var(--ink3);font-size:10.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase}
+.kb-title{margin:0;font-family:var(--serif);font-size:31px;font-weight:400;line-height:1;letter-spacing:-.015em}
+.kb-sub{margin:7px 0 0;color:var(--ink2);font-size:12.5px}
+.kb-sub b{color:var(--ink);font-weight:600}
+.kb-readonly{display:inline-flex;align-items:center;gap:5px;margin-left:8px;padding:2px 8px;border:1px solid var(--line2);border-radius:999px;color:var(--ink3);font-size:10.5px;font-weight:600;letter-spacing:.06em;vertical-align:1px}
+.kb-readonly:before{content:'';width:5px;height:5px;border-radius:50%;background:var(--soft)}
+.kb-livestate{display:inline-flex;align-items:center;gap:5px;margin-left:6px;color:var(--ink3);font-size:11px}
+.kb-livestate i{width:6px;height:6px;border-radius:50%;background:var(--ink3);display:inline-block}
+.kb-livestate[data-live="true"] i{background:var(--soft);box-shadow:0 0 0 3px color-mix(in srgb,var(--soft) 14%,transparent)}
+.kb-headtools{display:flex;align-items:center;gap:7px;flex:none;flex-wrap:wrap;justify-content:flex-end;max-width:62%}
+.kb-search{position:relative;display:flex;align-items:center}
+.kb-search svg{position:absolute;left:10px;color:var(--ink3);pointer-events:none}
+.kb-search input{width:238px;height:31px;padding:0 10px 0 30px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);outline:none;font-size:12.5px}
+.kb-search input:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 13%,transparent)}
+.kb-select{height:31px;max-width:190px;padding:0 26px 0 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink2);font-size:12px;outline:none}
+.kb-select:focus{border-color:var(--accent)}
+.kb-iconbtn{width:31px;height:31px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink2)}
+.kb-iconbtn:hover{color:var(--ink);border-color:var(--line2)}
+.kb-iconbtn:disabled{opacity:.55;cursor:default}
+.kb-iconbtn[data-busy="true"] svg{animation:kb-spin 1.2s linear infinite}
+.kb-stats{display:flex;align-items:center;gap:15px;margin-top:13px;flex-wrap:wrap}
+.kb-stat{display:inline-flex;align-items:baseline;gap:6px;color:var(--ink3);font-size:11.5px}
+.kb-stat b{font-size:17px;line-height:1;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.kb-stat[data-tone="needs"] b{color:var(--q)}
+.kb-stat[data-tone="working"] b{color:var(--done)}
+.kb-stat[data-tone="settled"] b{color:var(--ink2)}
+.kb-statsep{width:1px;height:16px;background:var(--line)}
+.kb-banner{margin:0 22px 10px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink2);font-size:12px;display:flex;align-items:center;gap:8px}
+.kb-banner[data-kind="error"]{border-color:color-mix(in srgb,var(--hi) 40%,var(--line));color:var(--hi);background:color-mix(in srgb,var(--hi) 7%,var(--card))}
+.kb-banner button{margin-left:auto;border:0;background:none;color:var(--accent);font-size:12px;text-decoration:underline;text-underline-offset:3px}
+.kb-notice{position:absolute;left:50%;bottom:18px;z-index:30;transform:translateX(-50%);max-width:min(620px,calc(100% - 40px));padding:8px 12px;border-radius:8px;background:var(--ink);color:var(--card);font-size:12px;box-shadow:var(--shadow-lift)}
+.kb-notice[data-kind="warn"]{background:var(--med);color:#fff}
+.kb-lanes{flex:1;min-height:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;padding:0 18px 18px;overflow:hidden}
+.kb-lane{min-width:0;min-height:0;display:flex;flex-direction:column;background:var(--lane);border-radius:16px;overflow:hidden;border:1px solid color-mix(in srgb,var(--line) 55%,transparent)}
+.kb-lanehead{flex:none;padding:13px 13px 8px}
+.kb-lanetitlerow{display:flex;align-items:center;gap:7px;min-width:0}
+.kb-lanedot{width:7px;height:7px;border-radius:50%;background:var(--ink3);flex:none}
+.kb-lane[data-lane="needs"] .kb-lanedot{background:var(--q);box-shadow:0 0 0 3px color-mix(in srgb,var(--q) 15%,transparent)}
+.kb-lane[data-lane="working"] .kb-lanedot{background:var(--done)}
+.kb-lane[data-lane="settled"] .kb-lanedot{background:var(--soft)}
+.kb-lanetitle{margin:0;font-family:var(--serif);font-size:19px;font-weight:400;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kb-laneactor{color:var(--ink3);font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
+.kb-count{margin-left:auto;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:var(--card);color:var(--ink2);font-size:11px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
+.kb-brk{margin:4px 0 0;color:var(--ink3);font-size:10.5px;letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kb-lanebody{flex:1;min-height:0;overflow:auto;padding:1px 10px 11px;display:flex;flex-direction:column;gap:8px;scrollbar-width:thin}
+.kb-lanebody::-webkit-scrollbar{width:6px}
+.kb-lanebody::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--ink3) 35%,transparent);border-radius:6px}
+.kb-lanefoot{flex:none;padding:0 10px 11px}
+.kb-empty{padding:23px 8px;text-align:center;color:var(--ink3)}
+.kb-empty svg{margin:0 auto 8px;display:block;opacity:.7}
+.kb-emptytitle{color:var(--ink2);font-size:12.5px;font-weight:600}
+.kb-emptysub{margin-top:3px;font-size:11.5px;line-height:1.4}
+.kb-section{display:flex;flex-direction:column;gap:7px}
+.kb-sechead{display:flex;align-items:center;gap:6px;padding:6px 3px 0;color:var(--ink3);font-size:10px;font-weight:600;letter-spacing:.11em;text-transform:uppercase}
+.kb-sechead span:last-child{margin-left:auto;font-variant-numeric:tabular-nums;letter-spacing:0}
+.kb-card{position:relative;flex:none;background:var(--card);border:1px solid color-mix(in srgb,var(--line) 70%,transparent);border-radius:12px;padding:11px 11px 10px 14px;box-shadow:var(--shadow-sm);cursor:pointer;outline:none;transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease}
+.kb-card:before{content:'';position:absolute;left:0;top:9px;bottom:9px;width:3px;border-radius:0 3px 3px 0;background:var(--sc,var(--ink3))}
+.kb-card:hover{transform:translateY(-1px);box-shadow:var(--shadow-lift);border-color:color-mix(in srgb,var(--sc,var(--line2)) 35%,var(--line))}
+.kb-card:focus-visible{box-shadow:0 0 0 2px var(--canvas),0 0 0 4px var(--accent)}
+.kb-card[data-archived="true"]{cursor:default;opacity:.62;box-shadow:none}
+.kb-card[data-archived="true"]:hover{transform:none;box-shadow:none}
+.kb-card[data-compact="true"] .kb-evidence{color:var(--ink3)}
+.kb-cardtop{display:flex;align-items:flex-start;gap:7px;min-width:0}
+.kb-cardtop .kb-stateicon{flex:none;margin-top:1px;color:var(--sc,var(--ink3))}
+.kb-cardtitle{margin:0;min-width:0;flex:1;font-family:var(--serif);font-size:17px;font-weight:400;line-height:1.16;letter-spacing:-.005em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.kb-badges{flex:none;display:flex;align-items:center;gap:4px;max-width:45%;flex-wrap:wrap;justify-content:flex-end}
+.kb-badge{display:inline-flex;align-items:center;gap:3px;max-width:120px;padding:2px 5px;border-radius:4px;background:color-mix(in srgb,var(--ink3) 10%,var(--card));color:var(--ink2);font-size:9.5px;font-weight:600;line-height:1.3;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kb-badge[data-tone="new"]{background:color-mix(in srgb,var(--soft) 16%,var(--card));color:var(--soft)}
+.kb-badge[data-tone="stale"]{background:color-mix(in srgb,var(--med) 16%,var(--card));color:var(--med)}
+.kb-badge[data-tone="fork"]{background:color-mix(in srgb,var(--accent) 10%,var(--card));color:var(--accent)}
+.kb-badge[data-tone="migrate"]{background:color-mix(in srgb,var(--hi) 12%,var(--card));color:var(--hi)}
+.kb-badge[data-tone="arch"]{background:color-mix(in srgb,var(--ink3) 10%,var(--card));color:var(--ink3)}
+.kb-status{display:flex;align-items:center;gap:5px;margin-top:5px;color:var(--sc,var(--ink2));font-size:11px;font-weight:600;line-height:1.35;min-width:0}
+.kb-status .kb-statustext{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kb-status .kb-statustime{color:var(--ink3);font-weight:400;white-space:nowrap;font-variant-numeric:tabular-nums}
+.kb-status .kb-statustime:before{content:'·';margin-right:5px;color:var(--line2)}
+.kb-evidence{margin:5px 0 0;color:var(--ink2);font-size:12.5px;line-height:1.42;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.kb-evidence[data-kind="question"]{color:var(--ink);font-size:13px;line-height:1.45}
+.kb-evidence[data-kind="result"]{color:var(--ink2)}
+.kb-evidence[data-kind="error"]{color:var(--hi)}
+.kb-evidence[data-kind="muted"]{color:var(--ink3)}
+.kb-evidence .kb-qmark{color:var(--sc,var(--ink3));font-family:var(--serif);font-size:17px;line-height:0;vertical-align:-3px;margin-right:2px}
+.kb-foot{display:flex;align-items:center;gap:6px;margin-top:7px;color:var(--ink3);font-size:10.5px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.kb-foot span{overflow:hidden;text-overflow:ellipsis}
+.kb-foot i{font-style:normal;color:var(--line2)}
+.kb-ws{display:inline-block;max-width:150px;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom}
+.kb-more{display:block;width:100%;margin-top:2px;padding:7px 9px;border:1px solid var(--line);border-radius:9px;background:color-mix(in srgb,var(--card) 55%,transparent);color:var(--ink2);font-size:11.5px;text-align:center}
+.kb-more:hover{background:var(--card);color:var(--ink)}
+.kb-archrow{display:flex;align-items:center;gap:7px;width:100%;margin-top:3px;padding:8px 9px;border:1px dashed var(--line2);border-radius:9px;background:transparent;color:var(--ink3);font-size:11.5px;text-align:left}
+.kb-archrow:hover{background:color-mix(in srgb,var(--card) 55%,transparent);color:var(--ink2)}
+.kb-archrow span:last-child{margin-left:auto;font-variant-numeric:tabular-nums}
+.kb-archlist{display:flex;flex-direction:column;gap:7px;margin-top:5px}
+.kb-archhint{padding:6px 3px 0;color:var(--ink3);font-size:10.5px}
+.kb-fatal{flex:1;display:flex;align-items:center;justify-content:center;padding:30px}
+.kb-fatalbox{max-width:440px;text-align:center;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px;box-shadow:var(--shadow-sm)}
+.kb-fatalbox h2{margin:0 0 6px;font-family:var(--serif);font-size:22px;font-weight:400}
+.kb-fatalbox p{margin:0;color:var(--ink2);font-size:12.5px;line-height:1.5}
+.kb-fatalbox button{margin-top:14px;padding:7px 12px;border:1px solid var(--accent);border-radius:7px;background:var(--accent);color:var(--accent-ink);font-size:12px;font-weight:600}
+.kb-skel{height:92px;border-radius:12px;background:linear-gradient(100deg,var(--card) 20%,color-mix(in srgb,var(--card) 75%,var(--line)) 38%,var(--card) 56%);background-size:220% 100%;animation:kb-shimmer 1.4s ease-in-out infinite;border:1px solid color-mix(in srgb,var(--line) 55%,transparent)}
+.kb-hint{padding:0 2px;color:var(--ink3);font-size:10.5px;line-height:1.45}
+.kb-footnote{padding:0 22px 12px;color:var(--ink3);font-size:10.5px;line-height:1.45}
+.kb-footnote b{color:var(--ink2);font-weight:500}
+.kb-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@keyframes kb-spin{to{transform:rotate(360deg)}}
+@keyframes kb-shimmer{0%{background-position:180% 0}100%{background-position:-40% 0}}
+@media (max-width:980px){
+  .kb-head{padding:15px 14px 11px}
+  .kb-headrow{flex-direction:column;gap:11px}
+  .kb-headtools{max-width:none;width:100%;justify-content:flex-start}
+  .kb-search{flex:1;min-width:150px}
+  .kb-search input{width:100%}
+  .kb-title{font-size:27px}
+  .kb-lanes{display:flex;flex-direction:column;overflow:auto;padding:0 12px 14px;gap:12px}
+  .kb-lane{min-height:auto;flex:none;overflow:visible}
+  .kb-lanebody{overflow:visible;flex:none}
+  .kb-card:hover{transform:none}
+  .kb-banner{margin:0 14px 9px}
+  .kb-footnote{padding:0 14px 10px}
 }
 @media (prefers-reduced-motion:reduce){
-  .kb-anim,.kb-drawer,.kb-scrim{animation:none!important}
-  .kb-card,.kb-flowseg,.kb-pill,.kb-btn{transition:none!important}
-  .kb-ghost .kb-card{transform:none!important}
-}
-.kb-rec{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-radius:10px;background:color-mix(in srgb,var(--ink) 3.5%,transparent)}
-.kb-rec[data-tone="warn"]{background:color-mix(in srgb,var(--med) 9%,transparent)}
-.kb-rec[data-tone="error"]{background:color-mix(in srgb,var(--hi) 9%,transparent)}
-.kb-rechead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;color:var(--ink2)}
-.kb-rechead b{font-weight:600;color:var(--ink)}
-.kb-recmeta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;font-size:11.5px;color:var(--meta);font-variant-numeric:tabular-nums;word-break:break-word}
-.kb-recmeta code{font-family:ui-monospace,SFMono-Regular,Consolas,'Liberation Mono',monospace;font-size:11.5px}
-.kb-recbody{margin:0;font-size:12px;line-height:1.6;color:var(--ink2);white-space:pre-wrap;word-break:break-word}
-.kb-recbody[data-kind="error"]{color:color-mix(in srgb,var(--hi) 72%,var(--ink))}
-.kb-btn--link{border:none;background:transparent;color:var(--accent);font:inherit;font-size:11.5px;font-weight:600;padding:0 2px;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
-.kb-mustfix{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px;font-size:12px;line-height:1.55;color:var(--ink2)}
-.kb-mustfix li{display:flex;gap:7px;align-items:flex-start}
-.kb-mustfix li::before{content:"●";color:var(--hi);font-size:7px;line-height:1.9;flex:none}
-.kb-mustfix code{font-family:ui-monospace,SFMono-Regular,Consolas,'Liberation Mono',monospace;font-size:11.5px;background:color-mix(in srgb,var(--ink) 6%,transparent);border-radius:4px;padding:0 4px;word-break:break-all}
-.kb-nits{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--meta);line-height:1.5}
-.kb-nits li::before{content:"–";margin-right:6px;opacity:.6}
-.kb-deliver{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border-radius:10px;border:1px solid var(--line)}
-.kb-actionrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
-.kb-grouplabel{margin:0;font-size:11.5px;font-weight:600;color:var(--meta)}
-.kb-gov{display:flex;flex-wrap:wrap;align-items:center;gap:5px 0;margin:14px 0 0;padding:8px 12px;border-radius:10px;border:1px solid color-mix(in srgb,var(--line) 70%,transparent);background:color-mix(in srgb,var(--ink) 3%,transparent);color:var(--ink2);font-size:11.5px}
-.kb-govitem{display:inline-flex;align-items:baseline;gap:5px;padding:0 13px 0 0;margin:0 13px 0 0;border-right:1px solid color-mix(in srgb,var(--line) 75%,transparent);min-width:0}
-.kb-govitem:last-child{border-right:none;margin-right:0;padding-right:0}
-.kb-govitem b{font-size:13px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
-.kb-govitem[data-tone="warn"] b{color:color-mix(in srgb,var(--med) 72%,var(--ink))}
-.kb-govkey{color:var(--meta);white-space:nowrap}
-.kb-verif{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:12px;line-height:1.5;color:var(--ink2)}
-.kb-verif[data-tone="warn"]{color:color-mix(in srgb,var(--med) 72%,var(--ink))}
-.kb-verif[data-tone="soft"]{color:color-mix(in srgb,var(--soft) 68%,var(--ink))}
-.kb-verif[data-tone="error"]{color:color-mix(in srgb,var(--hi) 72%,var(--ink))}
-.kb-evlist{display:flex;flex-direction:column;gap:5px;margin:0;padding:0 12px 12px}
-.kb-ev{display:flex;flex-direction:column;gap:3px;min-width:0;padding:7px 9px;border-radius:8px;background:color-mix(in srgb,var(--ink) 4%,transparent);font-size:12px;line-height:1.55;color:var(--ink2)}
-.kb-ev[data-tone="error"]{background:color-mix(in srgb,var(--hi) 9%,transparent)}
-.kb-evtop{display:flex;align-items:center;gap:5px 8px;flex-wrap:wrap;font-size:11px;color:var(--meta)}
-.kb-evtop .kb-ico{color:var(--meta)}
-.kb-evcmd{font-family:ui-monospace,SFMono-Regular,Consolas,'Liberation Mono',monospace;font-size:11px;color:var(--ink);background:color-mix(in srgb,var(--ink) 6%,transparent);border-radius:4px;padding:0 4px;word-break:break-all}
-.kb-evcode{font-weight:600;font-variant-numeric:tabular-nums;color:color-mix(in srgb,var(--soft) 72%,var(--ink))}
-.kb-evcode[data-ok="false"]{color:color-mix(in srgb,var(--hi) 74%,var(--ink))}
-.kb-evtext{word-break:break-word;white-space:pre-wrap}
-.kb-audit{display:flex;flex-direction:column;min-width:0}
-.kb-audit>summary{display:flex;align-items:center;gap:9px;width:100%;list-style:none;cursor:pointer;color:var(--ink)}
-.kb-audit>summary::-webkit-details-marker{display:none}
-.kb-audit>summary .kb-ico{color:var(--ink3);transition:transform .16s ease;flex:none}
-.kb-audit[open]>summary .kb-ico{transform:rotate(180deg)}
-.kb-auditlist{display:flex;flex-direction:column;gap:6px;margin:10px 0 0;padding:0;list-style:none;min-width:0}
-.kb-auditrow{display:flex;flex-direction:column;gap:3px;min-width:0;padding:8px 10px;border-radius:9px;background:color-mix(in srgb,var(--ink) 3.5%,transparent);font-size:11.5px;line-height:1.5;color:var(--ink2)}
-.kb-auditmeta{display:flex;align-items:baseline;gap:4px 10px;flex-wrap:wrap;color:var(--meta);font-variant-numeric:tabular-nums}
-.kb-auditmeta b{font-size:12px;font-weight:600;color:var(--ink)}
-.kb-auditflow{color:var(--meta);font-size:11px}
-.kb-auditreason{margin:0;color:var(--ink2);word-break:break-word}
-@media (max-width:860px){
-  .kb-gov{padding:7px 10px;gap:4px 0}
-  .kb-govitem{padding:0 10px 0 0;margin:0 10px 0 0}
+  .kb-card,.kb-card:hover{transition:none;transform:none}
+  .kb-skel,.kb-iconbtn[data-busy="true"] svg{animation:none}
 }
 `;
 
@@ -344,1775 +178,1047 @@ body[data-ds-dark-theme] .kb .kb-input:focus,body[data-ds-dark-theme] .kb .kb-ar
       document.head.appendChild(tag);
     })();
 
-    const API_BASE = "/task-board-api";
-
     const LANES = [
-      { id: "todo", name: "待办", dot: "var(--ink3)", flow: "color-mix(in srgb,var(--ink) 22%,transparent)", actor: "人" },
-      { id: "progress", name: "进行中", dot: "var(--accent)", flow: "var(--accent)", actor: "AI" },
-      { id: "review", name: "AI 评审", dot: "var(--med)", flow: "var(--med)", actor: "AI" },
-      { id: "signoff", name: "待签收", dot: "var(--soft)", flow: "var(--soft)", actor: "人" },
-      { id: "done", name: "已完成", dot: "var(--done)", flow: "var(--done)", actor: "—" },
+      { id: "needs", title: "需要你", actor: "人", tone: "var(--q)" },
+      { id: "working", title: "进行中", actor: "AI / 系统", tone: "var(--done)" },
+      { id: "settled", title: "已收尾", actor: "—", tone: "var(--soft)" },
     ];
-    const LANE_BY_ID = {}; LANES.forEach((l) => { LANE_BY_ID[l.id] = l; });
 
-    const STATUS = {
-      todo: { lane: "todo", label: "待办", tone: "todo" },
-      queued: { lane: "progress", label: "排队中", tone: "running" },
-      worktree_preparing: { lane: "progress", label: "准备工作树", tone: "running" },
-      running: { lane: "progress", label: "执行中", tone: "running" },
-      needs_input: { lane: "progress", label: "待你回答", tone: "warn" },
-      awaiting_approval: { lane: "progress", label: "待批准", tone: "warn" },
-      changes_requested: { lane: "progress", label: "待返工", tone: "warn" },
-      awaiting_review: { lane: "review", label: "待评审", tone: "review" },
-      reviewing: { lane: "review", label: "评审中", tone: "running" },
-      finalizing: { lane: "signoff", label: "生成交付物", tone: "running" },
-      awaiting_signoff: { lane: "signoff", label: "待签收", tone: "signoff" },
-      pr_pending: { lane: "signoff", label: "待补建 PR", tone: "warn" },
-      finalize_failed: { lane: "signoff", label: "交付失败", tone: "error" },
-      done: { lane: "done", label: "已完成", tone: "done" },
-      blocked: { lane: "progress", label: "受阻", tone: "error" },
-      failed: { lane: "progress", label: "失败", tone: "error" },
-      cancelled: { lane: "progress", label: "已取消", tone: "idle" },
-    };
-    const NEEDS_ATTENTION = ["needs_input", "awaiting_approval", "awaiting_signoff", "pr_pending", "finalize_failed", "blocked", "failed"];
-    const PRIORITY_NAME = { high: "高", medium: "中", low: "低", none: "无" };
-    const DEFAULT_BUDGET = { maxRounds: 3, maxTokens: 600000, maxMinutes: 60 };
-    const DEFAULT_SETTINGS = { concurrency: 2, maxRounds: 3, maxMinutesPerRun: 20, maxMinutesPerTask: 60, prMode: "auto", pushConsent: "first", localSignoffMerge: false, patchExport: true };
-    const LIVE_STATUS = ["queued", "worktree_preparing", "running", "needs_input", "awaiting_approval", "changes_requested", "awaiting_review", "reviewing", "finalizing"];
-    const STARTABLE = ["todo", "blocked", "failed", "cancelled"];
-    const CODE_TEXT = {
-      not_git: "工作区不是 Git 仓库",
-      no_head: "仓库还没有任何提交",
-      dirty: "工作区有未提交改动",
-      worktree_failed: "创建任务工作树失败",
-      missing_acceptance: "缺少验收标准",
-      agent_unavailable: "执行层不可用（AI 会话创建失败）",
-      queue_full: "执行队列已满，请稍后再试",
-      invalid_transition: "当前状态不允许这个操作",
-      revision_conflict: "看板已在别处更新",
-      action_failed: "操作失败",
-      not_ready: "交付物还没准备好",
-    };
-    const ACTION_NAME = { cancel: "取消", retry: "重试", answer: "回答", approve: "批准", signoff: "签字", reject: "打回", create_pr: "补建 PR", merge: "合并", cleanup: "清理工作树" };
-    const AUDIT_ACTION = {
-      create_card: "新建任务",
-      create_task_card: "会话内建卡",
-      save_board: "保存看板",
-      submit: "提交评审",
-      review_start: "开始评审",
-      review_start_failed: "评审启动失败",
-      review_pass: "评审通过",
-      review_changes: "评审要求返工",
-      review_changes_blocked: "评审受阻",
-      review_no_evidence: "评审缺证据被拒",
-      review_verification_failed: "机器验证未通过",
-      review_blocked: "评审受阻",
-      finalize: "生成交付物",
-      finalize_failed: "交付物生成失败",
-      resume: "恢复执行",
-      blocked: "任务受阻",
-      start: "开始执行",
-      start_failed: "启动失败",
-      execute_failed: "执行会话失败",
-      running: "进入执行",
-      queue: "排队等待",
-      request_input: "请求输入",
-      run_timeout: "执行超时",
-      review_timeout: "评审超时",
-      create_pr_pending: "待补建 PR",
-      create_pr: "创建 PR",
-      cancel: "取消执行",
-      answer: "回答问题",
-      signoff: "签字",
-      reject: "打回返工",
-      merge: "合并",
-      cleanup: "清理工作树",
-      reconcile: "启动对账",
+    const STATES = {
+      blank: { label: "新会话", tone: "draft", icon: "inbox" },
+      asking: { label: "等你回答", tone: "ask", icon: "question" },
+      approving: { label: "等你批准", tone: "approve", icon: "shield" },
+      plan_review: { label: "计划待审", tone: "plan", icon: "plan" },
+      failed: { label: "执行失败", tone: "fail", icon: "alert" },
+      blocked: { label: "已受阻", tone: "fail", icon: "alert" },
+      interrupted: { label: "已中断", tone: "fail", icon: "alert" },
+      max_tokens: { label: "输出超限", tone: "fail", icon: "alert" },
+      running: { label: "正在执行", tone: "work", icon: "spinner" },
+      subagent: { label: "子代理运行中", tone: "work", icon: "spinner" },
+      job: { label: "后台任务运行中", tone: "work", icon: "spinner" },
+      scheduled: { label: "等待定时", tone: "wait", icon: "clock" },
+      goal_waiting: { label: "等待续跑", tone: "wait", icon: "clock" },
+      completed: { label: "已完成", tone: "ok", icon: "check" },
+      stopped: { label: "已停止", tone: "muted", icon: "stop" },
+      goal_complete: { label: "目标完成", tone: "ok", icon: "check" },
+      goal_paused: { label: "目标已暂停", tone: "muted", icon: "stop" },
+      archived: { label: "已归档", tone: "muted", icon: "archive" },
+      unknown: { label: "已收尾", tone: "muted", icon: "dot" },
     };
 
-    const LABELS = [
-      { id: "design", name: "设计", tone: "blue" },
-      { id: "frontend", name: "前端", tone: "teal" },
-      { id: "backend", name: "后端", tone: "amber" },
-      { id: "research", name: "研究", tone: "magenta" },
-      { id: "growth", name: "增长", tone: "green" },
-    ];
-    const LABEL_MAP = {}; LABELS.forEach((l) => { LABEL_MAP[l.id] = l; });
-    function iso(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
-    function inDays(n) { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + n); return iso(d); }
-    function dueInfo(due) {
-      if (!due) return null;
-      const p = String(due).split("-").map(Number); if (p.length !== 3) return null;
-      const d = new Date(p[0], p[1] - 1, p[2]); const today = new Date(); today.setHours(0, 0, 0, 0);
-      const diff = Math.round((d - today) / 86400000);
-      let state = ""; if (diff < 0) state = "overdue"; else if (diff === 0) state = "today";
-      return { text: (d.getMonth() + 1) + "月" + d.getDate() + "日", state: state, diff: diff };
-    }
-    let seq = 0;
-    function uid(p) { seq += 1; return (p || "c") + "-" + Date.now().toString(36) + seq.toString(36); }
-
-    function emptyBoard() {
-      return { version: 3, revision: 0, seq: 0, settings: Object.assign({}, DEFAULT_SETTINGS), cards: [] };
-    }
-    function normalizeBoard(b) {
-      if (!b || !Array.isArray(b.cards)) return null;
-      return Object.assign({}, b, {
-        version: 3,
-        revision: typeof b.revision === "number" ? b.revision : 0,
-        seq: typeof b.seq === "number" ? b.seq : 0,
-        settings: Object.assign({}, DEFAULT_SETTINGS, b.settings || {}),
-        cards: b.cards,
-      });
-    }
-    function isDemo() { try { return /(?:^|[?&])demo=1(?:&|$)/.test(String(window.location.search || "")); } catch (e) { return false; } }
-
-    function shortBranch(branch) {
-      const text = String(branch || "");
-      if (text.length <= 18) return text;
-      if (text.indexOf("task-") === 0) return "task-…" + text.slice(-6);
-      return text.slice(0, 15) + "…";
-    }
-    function cardWorktree(card) {
-      if (!card) return null;
-      const runs = Array.isArray(card.runs) ? card.runs : [];
-      let worktree = null;
-      let startedAt = "";
-      for (let i = runs.length - 1; i >= 0; i -= 1) {
-        const run = runs[i];
-        if (run && run.worktree && run.worktree.branch) {
-          worktree = run.worktree;
-          startedAt = run.startedAt || "";
-          break;
-        }
-      }
-      if (!worktree && card.worktree && card.worktree.branch) {
-        worktree = card.worktree;
-      } else if (!worktree && card.delivery && card.delivery.branch) {
-        worktree = { path: "", branch: card.delivery.branch, baseCommit: card.delivery.baseCommit || "" };
-        startedAt = card.delivery.createdAt || "";
-      }
-      if (!worktree) return null;
-      const cleanedAt = card.delivery && card.delivery.cleanedAt;
-      if (cleanedAt) {
-        const cleaned = Date.parse(cleanedAt);
-        const started = Date.parse(startedAt || "");
-        if (!Number.isFinite(cleaned) || !Number.isFinite(started) || started <= cleaned) return null;
-      }
-      return worktree;
-    }
-
-    function seedBoard() {
-      const cards = [
-        { id: "a1", status: "todo", title: "为季度评审准备 Q4 路线图一页纸", description: "读者是评审委员会，材料会直接贴进评审文档。", acceptance: "一页纸覆盖目标、四个季度节奏与依赖；导出 PDF 后无排版错位。", labels: ["growth"], priority: "low", due: inDays(9), executor: "", reviewer: "" },
-        { id: "a2", status: "todo", title: "端到端埋点打通结算漏斗", description: "结算漏斗目前只有下单事件，支付与退款缺失。", acceptance: "漏斗每一步都有埋点；用测试账号走完流程后事件全部上报；`npm test` 全绿。", labels: ["backend", "growth"], priority: "medium", due: inDays(12), executor: "", reviewer: "" },
-        { id: "a3", status: "todo", title: "逐一审查所有空状态的语气与清晰度", labels: ["design"], priority: "low", due: null, executor: "", reviewer: "" },
-        { id: "b1", status: "running", title: "围绕「首次价值」重做新手引导流程", description: "首次价值 = 用户完成第一次真实导出。当前 7 日留存 41%，目标 55%。", acceptance: "新流程上线后 7 日留存 ≥ 55%；每一步有埋点；不改动现有账号体系。", labels: ["design", "research"], priority: "high", due: inDays(2), executor: "deepseek-chat", reviewer: "deepseek-reasoner", round: 1, worktree: { path: ".agents/worktrees/task-b1", branch: "task-b1" } },
-        { id: "b2", status: "changes_requested", title: "发布深色模式设计令牌", description: "补齐语义层令牌，暗色覆盖全部宿主主题。", acceptance: "语义令牌覆盖卡片/输入/边框/强调色；明暗两套截图对比无遗漏。", labels: ["frontend", "design"], priority: "medium", due: inDays(5), executor: "deepseek-chat", reviewer: "deepseek-reasoner", round: 2 },
-        { id: "b3", status: "needs_input", title: "修复 Safari 上拖拽浮层抖动", description: "Safari 26 上浮层跟手有 1–2px 抖动，需要确认是否接受 CSS 变量方案。", acceptance: "Safari / Chrome 拖拽浮层无抖动；`prefers-reduced-motion` 下不播放动效。", labels: ["frontend"], priority: "high", due: inDays(-1), executor: "deepseek-chat", reviewer: "", round: 1 },
-        { id: "c1", status: "reviewing", title: "定价页文案 A/B 测试（第二轮）", acceptance: "两组文案各覆盖 50% 流量；指标看板能看到转化差异。", labels: ["growth"], priority: "medium", due: inDays(6), executor: "deepseek-chat", reviewer: "deepseek-reasoner", round: 1 },
-        { id: "c2", status: "awaiting_review", title: "命令面板键盘快捷键", description: "统一 ⌘K 与 / 的行为，避免和搜索冲突。", acceptance: "⌘K 打开命令面板；/ 聚焦搜索；Esc 逐层关闭。", labels: ["frontend"], priority: "low", due: inDays(4), executor: "deepseek-chat", reviewer: "deepseek-reasoner", round: 1 },
-        { id: "d1", status: "awaiting_signoff", title: "新手引导邮件序列（五封）", description: "五封邮件对应激活的五个阶段，用户可随时退订。", acceptance: "五封邮件文案与节奏通过评审；变量替换无遗漏；退订链接可用。", labels: ["growth"], priority: "medium", due: inDays(3), executor: "deepseek-chat", reviewer: "deepseek-reasoner", round: 1, pr: { number: 128, state: "open", checks: "passed" } },
-        { id: "e1", status: "done", title: "搭好错误预算告警", acceptance: "预算消耗 80% 与 100% 各有一条告警；演练一次能收到。", labels: ["backend"], priority: "low", due: inDays(-4), pr: { number: 121, state: "merged" } },
-        { id: "e2", status: "done", title: "发布设计原则手册", acceptance: "手册包含四条原则与对应案例；团队评审通过。", labels: ["design"], priority: "none", due: null },
-        { id: "e3", status: "done", title: "访谈五位重度用户", acceptance: "五份访谈记录入库；提炼出三条共同痛点。", labels: ["research"], priority: "medium", due: inDays(-8) },
-      ];
-      return { version: 3, revision: 0, seq: 0, settings: Object.assign({}, DEFAULT_SETTINGS), cards: cards };
-    }
-
-    async function api(path, opts) {
-      let res;
-      let reqPath = path;
-      try {
-        const tok = lsGet("dsh.task-board.token");
-        if (tok) reqPath += (path.indexOf("?") >= 0 ? "&" : "?") + "token=" + encodeURIComponent(tok);
-      } catch (e) { }
-      try {
-        res = await fetch(API_BASE + reqPath, Object.assign({ headers: { "content-type": "application/json" } }, opts || {}));
-      } catch (e) {
-        const err = new Error("Host 接口不可用");
-        err.offline = true;
-        throw err;
-      }
-      let data = null;
-      try { data = await res.json(); } catch (e) { data = null; }
-      if (!res.ok) {
-        const err = new Error((data && data.error) || ("HTTP " + res.status));
-        err.status = res.status;
-        err.code = (data && data.code) || (res.status === 409 ? "revision_conflict" : "http_" + res.status);
-        err.data = data;
-        throw err;
-      }
-      return data || {};
-    }
-    function failureText(d) {
-      if (!d) return "操作失败";
-      const mapped = d.code ? CODE_TEXT[d.code] : "";
-      if (mapped && d.error && d.error !== mapped) return mapped + "：" + d.error;
-      return mapped || d.error || "操作失败";
-    }
-    function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
-    function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { } }
-    function safeUrl(u) { const s = String(u || ""); return /^https?:\/\//i.test(s) ? s : null; }
-    function downloadText(name, text) {
-      try {
-        const blob = new Blob([String(text || "")], { type: "text/plain;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url; a.download = name;
-        document.body.appendChild(a); a.click(); document.body.removeChild(a);
-        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-        return true;
-      } catch (e) { return false; }
-    }
-    async function copyText(text) {
-      const value = String(text == null ? "" : text);
-      try {
-        if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(value); return true; }
-      } catch (e) { }
-      try {
-        const ta = document.createElement("textarea");
-        ta.value = value; ta.style.position = "fixed"; ta.style.top = "-1000px"; ta.style.opacity = "0";
-        document.body.appendChild(ta); ta.select();
-        const ok = document.execCommand("copy");
-        document.body.removeChild(ta);
-        return !!ok;
-      } catch (e) { return false; }
-    }
+    const FAILURE_STATES = { failed: 1, blocked: 1, interrupted: 1, max_tokens: 1 };
+    const WORKING_STATES = { running: 1, subagent: 1, job: 1, scheduled: 1, goal_waiting: 1 };
+    const PENDING_STATE = { question: "asking", approval: "approving", "plan-review": "plan_review" };
 
     let clientCtx = null;
-    const INIT_GIT_PROMPT = "立即为本项目创建git仓库，并完成初次提交。";
 
-    function clientService(name) {
-      try {
-        if (!clientCtx || typeof clientCtx.get !== "function") return null;
-        return clientCtx.get(name) || null;
-      } catch (e) { return null; }
+    function service(name) {
+      if (!clientCtx || typeof clientCtx.get !== "function") return null;
+      try { return clientCtx.get(name) || null; } catch (e) { return null; }
     }
 
-    async function createGitRepoSession(workspace) {
-      if (!workspace || !workspace.id) throw new Error("没有可用的工作区");
-      const sessions = clientService("sessions");
-      const workspaceNav = clientService("uiWorkspace");
-      if (!sessions || typeof sessions.create !== "function" || typeof sessions.retain !== "function") throw new Error("当前宿主不支持自动创建会话");
-      if (!workspaceNav || typeof workspaceNav.openSession !== "function") throw new Error("当前宿主不支持打开会话");
-      const sessionId = await sessions.create({ workspaceId: workspace.id });
-      let reference = null;
-      try {
-        reference = sessions.retain(sessionId, { source: "task-board" });
-        const result = await reference.binding.session.prompt([{ type: "text", text: INIT_GIT_PROMPT }], "queue");
-        if (!result || result.ok !== true) {
-          const error = result && result.error;
-          throw new Error((error && error.message) || "会话拒绝了这条指令");
-        }
-      } finally {
-        if (reference) reference.release();
+    function useObservable(observable) {
+      const [value, setValue] = useState(function () {
+        return observable && typeof observable.getSnapshot === "function" ? observable.getSnapshot() : undefined;
+      });
+      useEffect(function () {
+        if (!observable || typeof observable.getSnapshot !== "function") { setValue(undefined); return; }
+        setValue(observable.getSnapshot());
+        const unsubscribe = typeof observable.subscribe === "function"
+          ? observable.subscribe(function () { setValue(observable.getSnapshot()); })
+          : null;
+        return function () { if (typeof unsubscribe === "function") unsubscribe(); };
+      }, [observable]);
+      return value;
+    }
+
+    async function api(path) {
+      const response = await fetch("/task-board-api" + path, { headers: { accept: "application/json" } });
+      let data = null;
+      try { data = await response.json(); } catch (e) { data = null; }
+      if (!response.ok || !data || data.ok !== true) {
+        throw new Error((data && data.error) || ("HTTP " + response.status));
       }
-      workspaceNav.openSession(sessionId);
+      return data;
     }
 
-    const PATHS = {
-      plus: [["M8 3.2v9.6"], ["M3.2 8h9.6"]],
-      search: [["M7.2 2.6a4.6 4.6 0 1 0 0 9.2 4.6 4.6 0 0 0 0-9.2Z"], ["M10.7 10.7 14 14"]],
-      x: [["M4 4 12 12"], ["M12 4 4 12"]],
-      calendar: [["M2.8 4.2h10.4v8.6H2.8z"], ["M2.8 6.8h10.4"], ["M5.4 2.4v2.6"], ["M10.6 2.4v2.6"]],
-      check: [["M3.4 8.4 6.3 11.2 12.3 4.6"]],
-      chat: [["M2.8 3.4h10.4v7.1H7.1L3.6 13.2v-2.7H2.8z"]],
-      trash: [["M2.8 4.3h10.4"], ["M6.2 4.3V2.7h3.6v1.6"], ["M4.4 4.3 5 12.6h6L11.6 4.3"]],
-      chevron: [["M4.2 6.2 8 10 11.8 6.2"]],
-      board: [["M2.4 3.2h11.2v9.6H2.4z"], ["M6.3 3.2v9.6"], ["M9.7 3.2v6.2"]],
-      alert: [["M8 2.6 14 12.8H2z"], ["M8 6.4v2.8"], ["M8 11.1v.1"]],
-      play: [["M4.5 2.8 12.5 8l-8 5.2z"]],
-      flag: [["M4 2.4v11.2"], ["M4 3.2h7.2l-1.5 2.6 1.5 2.6H4"]],
-      branch: [
-        ["M4 3.2v9.6"],
-        ["M4 3.2a1.4 1.4 0 1 1 0 2.8a1.4 1.4 0 1 1 0-2.8"],
-        ["M4 10.4a1.4 1.4 0 1 1 0 2.8a1.4 1.4 0 1 1 0-2.8"],
-        ["M5.4 4.6h3.2a1.4 1.4 0 0 1 1.4 1.4v3"],
-        ["M10 9a1.4 1.4 0 1 1 0 2.8a1.4 1.4 0 1 1 0-2.8"],
-      ],
-    };
+    function relative(ms, now) {
+      if (!ms) return "";
+      const delta = Number(now || Date.now()) - Number(ms);
+      if (!Number.isFinite(delta)) return "";
+      if (delta < 0) {
+        const future = -delta;
+        if (future < 60000) return "即将";
+        if (future < 3600000) return Math.round(future / 60000) + " 分钟后";
+        if (future < 86400000) return Math.round(future / 3600000) + " 小时后";
+        return new Date(ms).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
+      }
+      if (delta < 60000) return "刚刚";
+      if (delta < 3600000) return Math.max(1, Math.round(delta / 60000)) + " 分钟前";
+      if (delta < 86400000) return Math.max(1, Math.round(delta / 3600000)) + " 小时前";
+      if (delta < 7 * 86400000) return Math.max(1, Math.round(delta / 86400000)) + " 天前";
+      return new Date(ms).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
+    }
+
+    function duration(ms) {
+      if (ms === null || ms === undefined || !Number.isFinite(Number(ms))) return "";
+      const value = Math.max(0, Number(ms));
+      if (value < 60000) return Math.max(1, Math.round(value / 1000)) + " 秒";
+      if (value < 3600000) return Math.round(value / 60000) + " 分钟";
+      const hours = Math.floor(value / 3600000);
+      const minutes = Math.round((value % 3600000) / 60000);
+      return minutes ? hours + " 小时 " + minutes + " 分" : hours + " 小时";
+    }
+
+    function waitText(ms, now) { return ms ? "已等 " + duration(Number(now) - Number(ms)) : ""; }
+    function runText(ms, now) { return ms ? "已运行 " + duration(Number(now) - Number(ms)) : ""; }
+    function doneText(ms, now) { return ms ? relative(ms, now) : ""; }
+
+    function plain(value) {
+      return String(value || "")
+        .replace(/```[\s\S]*?```/g, " ")
+        .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+        .replace(/[#*_>`~]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function snippet(value, max) {
+      const text = plain(value);
+      const limit = max || 160;
+      return text.length > limit ? text.slice(0, limit) + "…" : text;
+    }
+
+    function formatTokens(value) {
+      const number = Number(value);
+      if (!Number.isFinite(number) || number <= 0) return "";
+      if (number >= 1000000) return (number / 1000000).toFixed(1).replace(/\.0$/, "") + "m";
+      if (number >= 1000) return (number / 1000).toFixed(1).replace(/\.0$/, "") + "k";
+      return String(Math.round(number));
+    }
+
+    function stateMeta(state) {
+      return STATES[state] || STATES.unknown;
+    }
+
+    function stateTone(state) {
+      const tone = stateMeta(state).tone;
+      if (tone === "ask" || tone === "approve") return "var(--q)";
+      if (tone === "plan") return "var(--accent)";
+      if (tone === "fail") return "var(--hi)";
+      if (tone === "work" || tone === "wait") return "var(--done)";
+      if (tone === "ok") return "var(--soft)";
+      if (tone === "draft" || tone === "muted") return "var(--ink3)";
+      return "var(--ink3)";
+    }
+
+    function laneOf(card, pending) {
+      if (card.archived) return "settled";
+      if (pending) return "needs";
+      if (card.blank) return "needs";
+      if (FAILURE_STATES[card.state]) return "needs";
+      if (WORKING_STATES[card.state]) return "working";
+      return "settled";
+    }
+
+    function pendingInfo(pending) {
+      if (!pending) return null;
+      if (pending.kind === "approval") {
+        const reason = plain(pending.displayReason || pending.reason || "");
+        return {
+          kind: "approval",
+          state: "approving",
+          label: "等你批准",
+          text: snippet(reason || ("请求批准：" + (pending.toolName || "工具")), 160),
+          meta: pending.toolName || "",
+        };
+      }
+      const questions = Array.isArray(pending.questions) ? pending.questions : [];
+      const first = questions[0] || {};
+      if (pending.kind === "plan-review") {
+        const detail = plain(first.detail || first.question || "");
+        return {
+          kind: "plan_review",
+          state: "plan_review",
+          label: "计划待审",
+          text: detail ? snippet(detail, 180) : (first.question || "计划待审"),
+          meta: questions.length > 1 ? "+" + (questions.length - 1) : "",
+        };
+      }
+      return {
+        kind: "asking",
+        state: "asking",
+        label: "等你回答",
+        text: snippet(first.question || "会话中有待回答的问题", 200),
+        meta: questions.length > 1 ? "+" + (questions.length - 1) : "",
+        options: Array.isArray(first.options) ? first.options : [],
+      };
+    }
+
+    function evidenceOf(card, pending, now) {
+      if (pending) {
+        return {
+          kind: pending.kind === "plan_review" ? "question" : (pending.kind === "approval" ? "error" : "question"),
+          text: pending.text,
+          meta: pending.meta,
+        };
+      }
+      const state = card.state;
+      const activity = card.activity || {};
+      const outcome = card.outcome || {};
+      if (state === "blank") return { kind: "muted", text: "输入第一句话开始；卡片会自动更新。" };
+      if (FAILURE_STATES[state]) {
+        const reason = outcome.error
+          || (card.goal && card.goal.blockedReason)
+          || (state === "blocked" ? "执行受阻，需要你决定下一步。" : stateMeta(state).label);
+        return { kind: "error", text: snippet(reason, 180) };
+      }
+      if (state === "running") {
+        let text = activity.currentStep || "正在生成回复…";
+        if (activity.todoTotal) text += " · " + activity.todoDone + "/" + activity.todoTotal + " 步";
+        return { kind: "step", text: snippet(text, 160) };
+      }
+      if (state === "subagent") {
+        const labels = activity.labels || [];
+        return { kind: "step", text: snippet(labels.length ? "子代理：" + labels.join(" / ") : "子代理运行中", 160) };
+      }
+      if (state === "job") {
+        const labels = activity.labels || [];
+        return { kind: "step", text: snippet(labels.length ? "后台任务：" + labels.join(" / ") : "后台任务运行中", 160) };
+      }
+      if (state === "scheduled") {
+        return { kind: "step", text: activity.scheduled > 1 ? "有 " + activity.scheduled + " 个定时任务待触发" : "有一个定时任务待触发" };
+      }
+      if (state === "goal_waiting") {
+        return { kind: "step", text: snippet(card.goal ? "目标：" + card.goal.objective : "等待下一轮续跑", 180) };
+      }
+      if (state === "goal_paused") {
+        return { kind: "muted", text: snippet(card.goal ? "目标已暂停：" + card.goal.objective : "目标已暂停", 180) };
+      }
+      if (state === "goal_complete") {
+        return { kind: "result", text: snippet(card.goal ? "目标完成：" + card.goal.objective : (outcome.lastResponse || "目标完成"), 200) };
+      }
+      if (state === "stopped") {
+        return { kind: "muted", text: snippet(outcome.lastResponse || "已停止，本轮没有留下文字结论。", 200) };
+      }
+      if (state === "completed") {
+        return { kind: "result", text: snippet(outcome.lastResponse || "本轮无文字结论。", 200) };
+      }
+      if (state === "archived") {
+        return { kind: "muted", text: "需在 DSH 侧栏恢复后才能打开。" };
+      }
+      return { kind: "muted", text: card.updatedAt ? "上次活动 " + relative(card.updatedAt, now) + "，打开查看。" : "打开会话查看。" };
+    }
+
+    function badgesOf(card, ctx) {
+      const badges = [];
+      if (ctx.newResult) badges.push({ text: "新结果", tone: "new" });
+      if (card.titleStale) badges.push({ text: "新指令", tone: "stale" });
+      else if (card.titleUpdatedAt && card.titleUpdatedAt > ctx.openedAt && card.titleSource === "provider") {
+        badges.push({ text: "任务已更新", tone: "stale" });
+      }
+      if (card.fork) badges.push({ text: "Fork", tone: "fork" });
+      if (card.formatStatus === "migration-required") badges.push({ text: "需迁移", tone: "migrate" });
+      return badges.slice(0, 2);
+    }
+
+    function statusText(card, pending, lane, now) {
+      if (pending) {
+        const meta = pending.meta ? " · " + pending.meta : "";
+        return { label: pending.label, time: waitText(card.activity && card.activity.runningSince || card.since || card.updatedAt, now) + meta };
+      }
+      const state = card.state;
+      const meta = stateMeta(state);
+      if (lane === "needs") {
+        if (state === "blank") return { label: "等你描述任务", time: card.createdAt ? relative(card.createdAt, now) : "" };
+        if (FAILURE_STATES[state]) return { label: meta.label, time: card.since ? relative(card.since, now) : "" };
+        return { label: meta.label, time: card.since ? waitText(card.since, now) : "" };
+      }
+      if (lane === "working") {
+        if (state === "scheduled") return { label: meta.label, time: "" };
+        if (state === "goal_waiting") return { label: meta.label, time: "" };
+        return { label: meta.label, time: card.activity && card.activity.runningSince ? runText(card.activity.runningSince, now) : "" };
+      }
+      return { label: meta.label, time: card.since ? doneText(card.since, now) : "" };
+    }
+
+    function footOf(card, lane, now) {
+      if (card.blank) return [{ text: card.createdAt ? relative(card.createdAt, now) : "刚刚" }];
+      const items = [];
+      if (card.workspace && card.workspace.title) items.push({ text: card.workspace.title, title: card.workspace.path || card.workspace.title });
+      if (card.archived) {
+        items.push({ text: card.updatedAt ? relative(card.updatedAt, now) : "" });
+      } else if (lane === "working") {
+        if (card.activity && card.activity.subagents) items.push({ text: "子代理 " + card.activity.subagents });
+        else if (card.activity && card.activity.jobs) items.push({ text: "任务 " + card.activity.jobs });
+        else if (card.turns) items.push({ text: card.turns + " 轮" });
+      } else if (lane === "settled") {
+        if (card.turns) items.push({ text: card.turns + " 轮" });
+        if (card.tokens) items.push({ text: formatTokens(card.tokens) + " tok" });
+        if (card.outcome && card.outcome.durationMs) items.push({ text: "用时 " + duration(card.outcome.durationMs) });
+      } else if (card.turns) {
+        items.push({ text: card.turns + " 轮" });
+      }
+      return items.filter(function (item) { return item.text; }).slice(0, 4);
+    }
+
     function Icon(props) {
-      const p = PATHS[props.name] || [];
-      return h("svg", { className: "kb-ico", width: props.size || 16, height: props.size || 16, viewBox: "0 0 16 16", "aria-hidden": "true", focusable: "false" },
-        p.map((s, i) => h("path", { key: i, d: s[0] })));
+      const name = props.name || "dot";
+      const size = props.size || 14;
+      const common = { width: size, height: size, viewBox: "0 0 16 16", "aria-hidden": "true", focusable: "false", style: { display: "block" } };
+      switch (name) {
+        case "question":
+          return h("svg", common, h("circle", { cx: 8, cy: 8, r: 6.3, fill: "none", stroke: "currentColor", strokeWidth: 1.4 }), h("path", { d: "M6.2 6.1c.1-1 .8-1.6 1.8-1.6 1.1 0 1.9.6 1.9 1.6 0 .8-.5 1.2-1.2 1.6-.6.3-.8.6-.8 1.2", fill: "none", stroke: "currentColor", strokeWidth: 1.4, strokeLinecap: "round" }), h("circle", { cx: 8, cy: 11.5, r: .9, fill: "currentColor" }));
+        case "shield":
+          return h("svg", common, h("path", { d: "M8 1.8l4.8 1.8v4.2c0 3-2 5.3-4.8 6.4-2.8-1.1-4.8-3.4-4.8-6.4V3.6L8 1.8z", fill: "none", stroke: "currentColor", strokeWidth: 1.4, strokeLinejoin: "round" }), h("path", { d: "M6 8l1.4 1.4L10.2 6.6", fill: "none", stroke: "currentColor", strokeWidth: 1.4, strokeLinecap: "round", strokeLinejoin: "round" }));
+        case "plan":
+          return h("svg", common, h("rect", { x: 2.4, y: 2, width: 11.2, height: 12, rx: 1.6, fill: "none", stroke: "currentColor", strokeWidth: 1.4 }), h("path", { d: "M5 5.4h6M5 8h6M5 10.6h3.6", stroke: "currentColor", strokeWidth: 1.4, strokeLinecap: "round" }));
+        case "alert":
+          return h("svg", common, h("path", { d: "M8 2.2l6 10.8H2L8 2.2z", fill: "none", stroke: "currentColor", strokeWidth: 1.4, strokeLinejoin: "round" }), h("path", { d: "M8 6v3.2", stroke: "currentColor", strokeWidth: 1.5, strokeLinecap: "round" }), h("circle", { cx: 8, cy: 11.4, r: .9, fill: "currentColor" }));
+        case "spinner":
+          return h("svg", Object.assign({}, common, { className: "kb-icospin" }), h("circle", { cx: 8, cy: 8, r: 5.6, fill: "none", stroke: "currentColor", strokeWidth: 1.5, opacity: .22 }), h("path", { d: "M8 2.4a5.6 5.6 0 015.6 5.6", fill: "none", stroke: "currentColor", strokeWidth: 1.5, strokeLinecap: "round" }));
+        case "check":
+          return h("svg", common, h("circle", { cx: 8, cy: 8, r: 6.2, fill: "none", stroke: "currentColor", strokeWidth: 1.4 }), h("path", { d: "M5 8.2l2 2 4-4.4", fill: "none", stroke: "currentColor", strokeWidth: 1.5, strokeLinecap: "round", strokeLinejoin: "round" }));
+        case "stop":
+          return h("svg", common, h("circle", { cx: 8, cy: 8, r: 6.2, fill: "none", stroke: "currentColor", strokeWidth: 1.4 }), h("rect", { x: 5.6, y: 5.6, width: 4.8, height: 4.8, rx: 1, fill: "currentColor" }));
+        case "clock":
+          return h("svg", common, h("circle", { cx: 8, cy: 8, r: 6.2, fill: "none", stroke: "currentColor", strokeWidth: 1.4 }), h("path", { d: "M8 4.4V8l2.6 1.6", fill: "none", stroke: "currentColor", strokeWidth: 1.4, strokeLinecap: "round", strokeLinejoin: "round" }));
+        case "archive":
+          return h("svg", common, h("rect", { x: 2.2, y: 3, width: 11.6, height: 3, rx: 1, fill: "none", stroke: "currentColor", strokeWidth: 1.4 }), h("path", { d: "M3.4 6.2V13h9.2V6.2M6.4 8.4h3.2", fill: "none", stroke: "currentColor", strokeWidth: 1.4, strokeLinecap: "round" }));
+        case "fork":
+          return h("svg", common, h("circle", { cx: 4.4, cy: 4, r: 1.8, fill: "none", stroke: "currentColor", strokeWidth: 1.4 }), h("circle", { cx: 11.6, cy: 4, r: 1.8, fill: "none", stroke: "currentColor", strokeWidth: 1.4 }), h("circle", { cx: 8, cy: 12, r: 1.8, fill: "none", stroke: "currentColor", strokeWidth: 1.4 }), h("path", { d: "M4.4 5.8v1.1c0 1.1.9 2 2 2h3.2c1.1 0 2-.9 2-2V5.8M8 8.9V10.2", fill: "none", stroke: "currentColor", strokeWidth: 1.4, strokeLinecap: "round" }));
+        case "pin":
+          return h("svg", common, h("path", { d: "M9.6 2.2l4.2 4.2-1.7 1.7-.7-.7-2.2 2.2.3 2.6-1.2 1.2-2.3-2.3-3.1 3.1-.7-.7 3.1-3.1-2.3-2.3 1.2-1.2 2.6.3 2.2-2.2-.7-.7 1.7-1.7z", fill: "none", stroke: "currentColor", strokeWidth: 1.2, strokeLinejoin: "round" }));
+        case "search":
+          return h("svg", common, h("circle", { cx: 7, cy: 7, r: 4.4, fill: "none", stroke: "currentColor", strokeWidth: 1.4 }), h("path", { d: "M10.4 10.4L14 14", stroke: "currentColor", strokeWidth: 1.4, strokeLinecap: "round" }));
+        case "refresh":
+          return h("svg", common, h("path", { d: "M13.4 8a5.4 5.4 0 11-1.6-3.8", fill: "none", stroke: "currentColor", strokeWidth: 1.4, strokeLinecap: "round" }), h("path", { d: "M13.5 2.8v3.4h-3.4", fill: "none", stroke: "currentColor", strokeWidth: 1.4, strokeLinecap: "round", strokeLinejoin: "round" }));
+        case "inbox":
+          return h("svg", common, h("path", { d: "M2.2 8.4L4 3h8l1.8 5.4V13H2.2V8.4z", fill: "none", stroke: "currentColor", strokeWidth: 1.4, strokeLinejoin: "round" }), h("path", { d: "M2.2 8.4h3.2l1 1.8h3.2l1-1.8h3.2", fill: "none", stroke: "currentColor", strokeWidth: 1.4, strokeLinejoin: "round" }));
+        case "chevron":
+          return h("svg", common, h("path", { d: "M4.2 6.2L8 10l3.8-3.8", fill: "none", stroke: "currentColor", strokeWidth: 1.5, strokeLinecap: "round", strokeLinejoin: "round" }));
+        case "dot":
+        default:
+          return h("svg", common, h("circle", { cx: 8, cy: 8, r: 3.2, fill: "currentColor" }));
+      }
     }
 
-    function Badge(props) { return h("span", { className: "kb-badge", "data-tone": props.tone }, h("i", { className: "kb-bdot" }), props.children); }
-    function shortId(id) { const s = String(id || ""); return s.length > 16 ? s.slice(0, 8) + "…" + s.slice(-4) : s; }
-    function fmtTime(v) { return v ? String(v).slice(0, 16).replace("T", " ") : ""; }
-    function autosize(el) { if (!el) return; el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; }
-    function formatTokens(n) { return Number(n || 0).toLocaleString("en-US"); }
-    function formatRate(v) {
-      if (v == null || !isFinite(Number(v))) return "—";
-      return (Math.round(Number(v) * 1000) / 10) + "%";
-    }
-    function formatCycle(ms) {
-      if (ms == null || !isFinite(Number(ms))) return "—";
-      const n = Math.max(0, Number(ms));
-      if (n < 60000) return "<1 分钟";
-      const minutes = Math.round(n / 60000);
-      if (minutes < 60) return minutes + " 分钟";
-      const hours = Math.floor(minutes / 60);
-      if (hours < 48) return (minutes % 60) ? hours + " 小时 " + (minutes % 60) + " 分" : hours + " 小时";
-      const days = Math.floor(hours / 24);
-      return (hours % 24) ? days + " 天 " + (hours % 24) + " 小时" : days + " 天";
-    }
-    function fmtStamp(v) { return v ? String(v).slice(0, 19).replace("T", " ") : ""; }
-    function normalizeEvidence(list) {
-      if (!Array.isArray(list)) return [];
-      const out = [];
-      list.forEach(function (item) {
-        if (item == null) return;
-        if (typeof item === "string") { if (item.trim()) out.push({ type: "note", text: item }); return; }
-        if (typeof item !== "object") { out.push({ type: "note", text: String(item) }); return; }
-        const text = typeof item.text === "string" ? item.text
-          : typeof item.summary === "string" ? item.summary
-          : typeof item.note === "string" ? item.note : "";
-        out.push({
-          type: item.type === "verification" ? "verification" : "note",
-          text: text,
-          command: item.command ? String(item.command) : "",
-          exitCode: item.exitCode == null ? null : item.exitCode,
-          at: item.at ? String(item.at) : "",
-        });
-      });
-      return out;
-    }
-    function actorText(actor) {
-      const s = String(actor || "");
-      if (!s) return "—";
-      if (s === "user") return "你";
-      if (s === "host") return "Host";
-      if (s.indexOf("agent:") === 0) return "AI · " + shortId(s.slice(6));
-      return shortId(s);
-    }
-    function statusText(v) { const s = String(v || ""); if (!s) return ""; return (STATUS[s] && STATUS[s].label) || s; }
-    function budgetCustom(card) { const b = card.budget || {}; return b.maxRounds != null || b.maxTokens != null || b.maxMinutes != null; }
-    function baseCustom(card) { const b = card.base || {}; return b.mode === "branch" || !!b.ignoreDirty; }
-    function buildPromptPreview(card) {
-      const lines = ["你是一个自动化执行代理。请只在当前 Git 工作树中完成任务，只改必要的文件。"];
-      lines.push("任务：" + (card.title || "(未命名任务)"));
-      if (card.description) lines.push("描述：" + card.description);
-      if (card.acceptance) lines.push("验收标准：" + card.acceptance);
-      lines.push("完成后请简要汇报：改了哪些文件、如何验证。");
-      return lines.join("\n");
-    }
-    function statusChangeText(prev, next) {
-      if (!prev || !next) return "";
-      const map = {};
-      (prev.cards || []).forEach((c) => { map[c.id] = c.status; });
-      for (let i = 0; i < next.cards.length; i++) {
-        const c = next.cards[i];
-        if (map[c.id] && map[c.id] !== c.status) {
-          const st = STATUS[c.status] || STATUS.todo;
-          const title = String(c.title || "").trim() || "任务";
-          return "「" + (title.length > 18 ? title.slice(0, 18) + "…" : title) + "」" + st.label;
-        }
-      }
-      for (let i = 0; i < next.cards.length; i++) {
-        const c = next.cards[i];
-        if (map[c.id] === undefined) {
-          const title = String(c.title || "").trim() || "任务";
-          return "新增任务“" + (title.length > 18 ? title.slice(0, 18) + "…" : title) + "”";
-        }
-      }
-      return "";
-    }
-
-    function BoardPage() {
-      const [board, setBoard] = useState(null);
-      const [wsList, setWsList] = useState([]);
-      const [wsId, setWsId] = useState(null);
-      const [gitInfo, setGitInfo] = useState(null);
-      const [switcher, setSwitcher] = useState(false);
-      const [query, setQuery] = useState("");
-      const [filterLabels, setFilterLabels] = useState([]);
-      const [filterPri, setFilterPri] = useState("all");
-      const [attentionOnly, setAttentionOnly] = useState(false);
-      const [openId, setOpenId] = useState(null);
-      const [composer, setComposer] = useState(null);
-      const [dragId, setDragId] = useState(null);
-      const [ghost, setGhost] = useState(null);
-      const [over, setOver] = useState(null);
-      const [entered, setEntered] = useState(false);
-      const [notice, setNotice] = useState(null);
-      const [saveState, setSaveState] = useState("ok");
-      const [startError, setStartError] = useState(null);
-      const [initGitBusy, setInitGitBusy] = useState(false);
-      const [govStats, setGovStats] = useState(null);
-      const [settingsOpen, setSettingsOpen] = useState(false);
-      const [settingsDraft, setSettingsDraft] = useState(null);
-      const [settingsBusy, setSettingsBusy] = useState(false);
-      const [settingsErr, setSettingsErr] = useState(null);
-      const [models, setModels] = useState({ status: "loading", groups: [], failures: [], default: null, error: "" });
-
-      const boardRef = useRef(null);
-      const dragRef = useRef(null);
-      const overRef = useRef(null);
-      const boardStateRef = useRef(null);
-      boardStateRef.current = board;
-      const wsIdRef = useRef(null); wsIdRef.current = wsId;
-      const searchRef = useRef(null);
-      const dirtyRef = useRef(false);
-      const serverRevRef = useRef(0);
-      const editSeqRef = useRef(0);
-      const savingRef = useRef(false);
-      const saveQueuedRef = useRef(false);
-      const savePromiseRef = useRef(null);
-      const saveConflictRef = useRef(false);
-      const pollBusyRef = useRef(false);
-      const initGitBusyRef = useRef(false);
-
-      const cards = (board && board.cards) || [];
-      const currentWs = wsList.find((w) => w.id === wsId) || { id: wsId, title: "看板", path: "" };
-
-      useEffect(() => {
-        let cancelled = false;
-        (async () => {
-          let ws = [];
-          try { const d = await api("/workspaces"); ws = (d.workspaces || []); } catch (e) { }
-          if (!ws.length) ws = [{ id: "local", title: "本地看板", path: "" }];
-          if (cancelled) return;
-          const saved = lsGet("dsh.task-board.ws");
-          const cur = ws.some((w) => w.id === saved) ? saved : ws[0].id;
-          setWsList(ws);
-          const b = await loadBoard(cur);
-          if (cancelled) return;
-          serverRevRef.current = b.revision || 0;
-          dirtyRef.current = false;
-          setWsId(cur); setBoard(b); setEntered(true);
-          probeGit(ws.find((w) => w.id === cur));
-        })();
-        return () => { cancelled = true; };
-      }, []);
-
-      useEffect(() => {
-        if (!wsId) return undefined;
-        const forWs = wsId;
-        let cancelled = false;
-        api("/stats?workspaceId=" + encodeURIComponent(forWs))
-          .then((d) => {
-            if (cancelled || wsIdRef.current !== forWs) return;
-            setGovStats(d && d.stats ? d.stats : null);
-          })
-          .catch(() => {
-            if (cancelled || wsIdRef.current !== forWs) return;
-            setGovStats(null);
-          });
-        return () => { cancelled = true; };
-      }, [wsId, board ? board.revision : null]);
-
-      function loadModels() {
-        setModels(function (prev) { return Object.assign({}, prev, { status: "loading", error: "" }); });
-        api("/models").then(function (d) {
-          if (!d || d.ok === false) throw new Error((d && d.error) || "Host 没有返回模型目录");
-          setModels({
-            status: "ready",
-            groups: Array.isArray(d.groups) ? d.groups : [],
-            failures: Array.isArray(d.failures) ? d.failures : [],
-            default: d.default && d.default.provider && d.default.model ? d.default : null,
-            error: "",
-          });
-        }).catch(function (e) {
-          const text = e && e.status === 404
-            ? "Host 版本还不支持模型目录"
-            : e && e.offline ? "Host 不可用，读不到模型目录" : "模型目录加载失败";
-          setModels({ status: "error", groups: [], failures: [], default: null, error: text });
-        });
-      }
-
-      useEffect(function () { loadModels(); }, []);
-
-      useEffect(function () {
-        if (!openId) return;
-        const ws = wsList.find(function (w) { return w.id === wsId; });
-        if (ws) probeGit(ws);
-      }, [openId, wsId]);
-
-      function modelLabel(value) {
-        const text = String(value || "");
-        if (!text) return "";
-        const groups = Array.isArray(models.groups) ? models.groups : [];
-        for (let i = 0; i < groups.length; i += 1) {
-          const group = groups[i];
-          const list = group && Array.isArray(group.models) ? group.models : [];
-          for (let j = 0; j < list.length; j += 1) {
-            const model = list[j];
-            if (model && String(group.id) + "/" + String(model.id) === text) return model.name || model.id;
-          }
-        }
-        return text;
-      }
-
-      async function loadBoard(id) {
-        try { const d = await api("/board?workspaceId=" + encodeURIComponent(id)); if (d && d.board) return normalizeBoard(d.board) || emptyBoard(); } catch (e) { }
-        const ls = lsGet("dsh.task-board.board." + id);
-        if (ls) { try { const n = normalizeBoard(JSON.parse(ls)); if (n) return n; } catch (e) { } }
-        if (isDemo()) return normalizeBoard(seedBoard()) || emptyBoard();
-        return emptyBoard();
-      }
-      async function probeGit(ws) {
-        if (!ws || !ws.path) { setGitInfo(null); return; }
-        try { const d = await api("/git?path=" + encodeURIComponent(ws.path)); setGitInfo(d); }
-        catch (e) { setGitInfo(null); }
-      }
-      async function createGitRepo() {
-        if (initGitBusyRef.current) return;
-        initGitBusyRef.current = true;
-        setInitGitBusy(true);
-        try {
-          await createGitRepoSession(currentWs);
-        } catch (e) {
-          setNotice({ kind: "error", text: "无法自动创建 Git 仓库：" + String((e && e.message) || e) });
-        } finally {
-          initGitBusyRef.current = false;
-          setInitGitBusy(false);
-        }
-      }
-      function switchWorkspace(id) {
-        setSwitcher(false);
-        if (id === wsId) return;
-        setGovStats(null);
-        loadBoard(id).then((next) => {
-          serverRevRef.current = next.revision || 0;
-          dirtyRef.current = false;
-          setWsId(id); setBoard(next); lsSet("dsh.task-board.ws", id);
-          probeGit(wsList.find((w) => w.id === id));
-        });
-      }
-
-      function applyServerBoard(next) {
-        if (!next || !Array.isArray(next.cards)) return;
-        serverRevRef.current = typeof next.revision === "number" ? next.revision : 0;
-        dirtyRef.current = false;
-        setBoard(next);
-      }
-      async function refreshBoard(noticeText) {
-        try {
-          const d = await api("/board?workspaceId=" + encodeURIComponent(wsIdRef.current));
-          if (d && d.board) applyServerBoard(normalizeBoard(d.board));
-        } catch (e) { }
-        if (noticeText) setNotice({ kind: "warn", text: noticeText });
-      }
-      async function saveNow() {
-        if (savingRef.current) {
-          saveQueuedRef.current = true;
-          if (savePromiseRef.current) { try { await savePromiseRef.current; } catch (e) { } }
-          return;
-        }
-        const p = doSave();
-        savePromiseRef.current = p;
-        try { await p; } finally { if (savePromiseRef.current === p) savePromiseRef.current = null; }
-      }
-      async function flushSave() {
-        if (!dirtyRef.current && !savingRef.current) return true;
-        saveConflictRef.current = false;
-        await saveNow();
-        if (dirtyRef.current || savingRef.current) await saveNow();
-        return !dirtyRef.current && !savingRef.current && !saveConflictRef.current;
-      }
-      async function doSave() {
-        const b = boardStateRef.current;
-        if (!b || !wsIdRef.current) return;
-        if (!dirtyRef.current) { setSaveState("ok"); return; }
-        const editAt = editSeqRef.current;
-        const forWs = wsIdRef.current;
-        const rev = serverRevRef.current;
-        savingRef.current = true;
-        try {
-          const d = await api("/board", { method: "PUT", body: JSON.stringify({ workspaceId: forWs, expectedRevision: rev, board: b }) });
-          if (d && d.ok) {
-            const next = d.board ? normalizeBoard(d.board) : null;
-            if (wsIdRef.current !== forWs) return;
-            if (next) serverRevRef.current = next.revision;
-            if (editSeqRef.current === editAt) {
-              dirtyRef.current = false;
-              if (next) setBoard(next); else setSaveState("ok");
-            } else {
-              setSaveState("pending");
-            }
-            if (d.result && Array.isArray(d.result.warnings) && d.result.warnings.length) {
-              setNotice({ kind: "warn", text: d.result.warnings.join(" ") });
-            }
-          } else if (d && d.ok === false) {
-            if (d.code === "revision_conflict") {
-              saveConflictRef.current = true;
-              setSaveState("error");
-              const next = d.board ? normalizeBoard(d.board) : null;
-              if (next) applyServerBoard(next); else await refreshBoard();
-              setNotice({ kind: "warn", text: "看板已在别处更新，已刷新为最新版本。" });
-            } else {
-              setSaveState("error");
-              setNotice({ kind: "warn", text: (CODE_TEXT[d.code] || "保存失败") + "（看板暂存在本地）" });
-            }
-          } else {
-            setSaveState("ok");
-          }
-        } catch (e) {
-          if (e.code === "revision_conflict") {
-            saveConflictRef.current = true;
-            setSaveState("error");
-            const next = e.data && e.data.board ? normalizeBoard(e.data.board) : null;
-            if (next) applyServerBoard(next); else await refreshBoard();
-            setNotice({ kind: "warn", text: "看板已在别处更新，已刷新为最新版本。" });
-          } else {
-            setSaveState("error");
-            if (e.offline) setNotice({ kind: "warn", text: "Host 不可用，看板仅保存在本地。" });
-          }
-        } finally {
-          savingRef.current = false;
-          if (wsIdRef.current === forWs) {
-            const pending = saveQueuedRef.current || (dirtyRef.current && editSeqRef.current !== editAt);
-            saveQueuedRef.current = false;
-            if (pending) setTimeout(saveNow, 250);
-          }
-        }
-      }
-
-      useEffect(() => {
-        if (!board || !wsId) return;
-        lsSet("dsh.task-board.board." + wsId, JSON.stringify(board));
-        if (!dirtyRef.current) { setSaveState("ok"); return; }
-        setSaveState("pending");
-        const t = setTimeout(() => { saveNow(); }, 250);
-        return () => clearTimeout(t);
-      }, [board, wsId]);
-
-      useEffect(() => {
-        const tick = async () => {
-          if (typeof document !== "undefined" && document.visibilityState && document.visibilityState !== "visible") return;
-          if (!wsIdRef.current) return;
-          if (savingRef.current || pollBusyRef.current) return;
-          const forWs = wsIdRef.current;
-          pollBusyRef.current = true;
-          try {
-            const d = await api("/board?workspaceId=" + encodeURIComponent(forWs));
-            if (wsIdRef.current !== forWs) return;
-            if (!d || !d.board) return;
-            const next = normalizeBoard(d.board);
-            if (!next || dirtyRef.current) return;
-            if (next.revision !== serverRevRef.current) {
-              const changed = statusChangeText(boardStateRef.current, next);
-              applyServerBoard(next);
-              if (changed) setNotice({ kind: "info", text: "看板已更新：" + changed });
-            }
-          } catch (e) {
-          } finally { pollBusyRef.current = false; }
-        };
-        const t = setInterval(tick, 2500);
-        return () => clearInterval(t);
-      }, []);
-
-      useEffect(() => {
-        if (!wsId || typeof EventSource === "undefined") return;
-        let es = null;
-        try {
-          let esUrl = API_BASE + "/events?workspaceId=" + encodeURIComponent(wsId);
-          const tok = lsGet("dsh.task-board.token");
-          if (tok) esUrl += "&token=" + encodeURIComponent(tok);
-          es = new EventSource(esUrl);
-          es.addEventListener("board", function () {
-            if (!dirtyRef.current && !savingRef.current) refreshBoard();
-          });
-        } catch (e) { es = null; }
-        return function () { if (es) es.close(); };
-      }, [wsId]);
-
-      useEffect(() => {
-        if (!notice || notice.kind !== "info") return;
-        const t = setTimeout(() => { setNotice(null); }, 4000);
-        return () => clearTimeout(t);
-      }, [notice]);
-
-      useEffect(() => {
-        function onKey(e) {
-          if (e.defaultPrevented) return;
-          const tag = (e.target && e.target.tagName) || "";
-          const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(tag) || (e.target && e.target.isContentEditable);
-          if (e.key === "Escape") {
-            if (openId) { dismissDrawer(); return; }
-            if (composer) { setComposer(null); return; }
-            if (switcher) { setSwitcher(false); return; }
-            if (dragRef.current) { try { document.body.style.userSelect = ""; } catch (x) {} dragRef.current = null; overRef.current = null; setDragId(null); setGhost(null); setOver(null); return; }
-            return;
-          }
-          if (typing) return;
-          if (e.key === "/") { e.preventDefault(); if (searchRef.current) searchRef.current.focus(); }
-          else if (e.key === "n" || e.key === "N") { e.preventDefault(); newTask(); }
-        }
-        window.addEventListener("keydown", onKey);
-        return () => window.removeEventListener("keydown", onKey);
-      }, [openId, composer, switcher]);
-
-      const patch = useCallback((id, obj) => {
-        editSeqRef.current += 1;
-        dirtyRef.current = true;
-        setBoard((b) => b ? Object.assign({}, b, { cards: b.cards.map((c) => c.id === id ? Object.assign({}, c, obj) : c) }) : b);
-      }, []);
-      function newTask() {
-        const card = { id: uid("t"), status: "todo", title: "", description: "", acceptance: "", labels: [], priority: "none", due: null, executor: "", reviewer: "", budget: {}, base: { mode: "head", ignoreDirty: false } };
-        editSeqRef.current += 1;
-        dirtyRef.current = true;
-        setBoard((b) => b ? Object.assign({}, b, { cards: [card].concat(b.cards) }) : b);
-        setOpenId(card.id);
-      }
-      function deleteTask(id) {
-        const b = boardStateRef.current;
-        const c = b ? b.cards.find((x) => x.id === id) : null;
-        if (c && LIVE_STATUS.indexOf(c.status) >= 0) {
-          setNotice({ kind: "warn", text: "任务正在执行中，请先取消再删除。" });
-          return false;
-        }
-        editSeqRef.current += 1;
-        dirtyRef.current = true;
-        setBoard((cur) => cur ? Object.assign({}, cur, { cards: cur.cards.filter((x) => x.id !== id) }) : cur);
-        setOpenId(null);
-        return true;
-      }
-      function dismissDrawer() {
-        const b = boardStateRef.current;
-        const c = openId && b ? b.cards.find((x) => x.id === openId) : null;
-        if (c && !String(c.title || "").trim() && !String(c.description || "").trim() && !String(c.acceptance || "").trim() && !(c.labels || []).length) {
-          editSeqRef.current += 1;
-          dirtyRef.current = true;
-          setBoard((cur) => cur ? Object.assign({}, cur, { cards: cur.cards.filter((x) => x.id !== c.id) }) : cur);
-        }
-        setOpenId(null);
-        setStartError(null);
-      }
-      function addCard(laneId, title) {
-        const text = (title || "").trim(); if (!text) return;
-        const card = { id: uid("t"), status: "todo", title: text, description: "", acceptance: "", labels: [], priority: "none", due: null, executor: "", reviewer: "", budget: {}, base: { mode: "head", ignoreDirty: false } };
-        editSeqRef.current += 1;
-        dirtyRef.current = true;
-        setBoard((b) => b ? Object.assign({}, b, { cards: b.cards.concat([card]) }) : b);
-      }
-
-      async function startTask(card) {
-        if (!card) return;
-        const b = boardStateRef.current;
-        const cur = b ? (b.cards.find((c) => c.id === card.id) || card) : card;
-        if (!String(cur.title || "").trim() || !String(cur.acceptance || "").trim()) {
-          setNotice({ kind: "warn", text: "先补全标题与验收标准，再让 AI 开始。" });
-          setOpenId(cur.id);
-          return;
-        }
-        if (gitInfo && !gitInfo.isRepo) { setNotice({ kind: "warn", text: "工作区不是 Git 仓库，无法执行任务。" }); setOpenId(cur.id); return; }
-        if (gitInfo && !gitInfo.hasHead) { setNotice({ kind: "warn", text: "仓库还没有提交，无法创建工作树。" }); setOpenId(cur.id); return; }
-        if (gitInfo && gitInfo.isLinkedWorktree) { setNotice({ kind: "warn", text: "当前是 linked worktree，不能在这里执行任务。" }); setOpenId(cur.id); return; }
-        setNotice(null);
-        setStartError(null);
-        const flushed = await flushSave();
-        if (!flushed) {
-          const text = saveConflictRef.current ? "看板已在别处更新，已刷新，请重试。" : "改动还没保存成功，先确认网络后重试。";
-          setNotice({ kind: "warn", text: text });
-          setStartError({ taskId: cur.id, text: text });
-          setOpenId(cur.id);
-          return;
-        }
-        try {
-          const d = await api("/start", { method: "POST", body: JSON.stringify({ workspaceId: wsIdRef.current, taskId: cur.id, expectedRevision: serverRevRef.current }) });
-          if (d && d.ok) {
-            if (d.board) applyServerBoard(normalizeBoard(d.board)); else await refreshBoard();
-          } else if (d && d.code === "revision_conflict") {
-            await refreshBoard("看板已在别处更新，已刷新，请重试。");
-            setStartError({ taskId: cur.id, text: "看板已在别处更新，请重试。" });
-            setOpenId(cur.id);
-          } else {
-            const text = failureText(d);
-            setNotice({ kind: "error", text: "没能开始：" + text });
-            setStartError({ taskId: cur.id, text: text });
-            setOpenId(cur.id);
-          }
-        } catch (e) {
-          if (e.code === "revision_conflict") {
-            await refreshBoard("看板已在别处更新，已刷新，请重试。");
-            setStartError({ taskId: cur.id, text: "看板已在别处更新，请重试。" });
-            setOpenId(cur.id);
-            return;
-          }
-          const text = e.offline ? "Host 启动接口不可用" : (e.message || "启动失败");
-          setNotice({ kind: "error", text: "没能开始：" + text + "，任务已留在原状态。" });
-          setStartError({ taskId: cur.id, text: text });
-          setOpenId(cur.id);
-        }
-      }
-      async function runAction(card, action, payload) {
-        setNotice(null);
-        setStartError(null);
-        try {
-          const d = await api("/action", { method: "POST", body: JSON.stringify({ workspaceId: wsIdRef.current, taskId: card.id, action: action, payload: payload || undefined, expectedRevision: serverRevRef.current }) });
-          if (d && d.ok) {
-            if (d.board) applyServerBoard(normalizeBoard(d.board)); else await refreshBoard();
-            return d;
-          }
-          const code = (d && d.code) || "";
-          if (code === "revision_conflict") {
-            await refreshBoard("看板已在别处更新，已刷新，请重试。");
-            const err = new Error("看板已在别处更新"); err.code = code; throw err;
-          }
-          const text = failureText(d);
-          setNotice({ kind: "error", text: text });
-          const err = new Error(text); err.code = code; throw err;
-        } catch (e) {
-          if (e.offline) setNotice({ kind: "error", text: (ACTION_NAME[action] || "操作") + "失败：Host 接口不可用。" });
-          throw e;
-        }
-      }
-      async function exportPatch(card) {
-        setNotice(null);
-        const d = await api("/patch?workspaceId=" + encodeURIComponent(wsIdRef.current) + "&taskId=" + encodeURIComponent(card.id));
-        if (d && d.ok) {
-          const ok = downloadText("task-patch-" + String(card.id).replace(/[^\w-]/g, "") + ".patch", d.patch);
-          setNotice(ok ? { kind: "info", text: "补丁已导出。" } : { kind: "warn", text: "导出了补丁但下载被浏览器拦截。" });
-        } else {
-          setNotice({ kind: "error", text: failureText(d) });
-        }
-      }
-      async function openSession(card, sessionId) {
-        try {
-          const nav = typeof clientService === "function" ? clientService("uiWorkspace") : null;
-          if (nav && typeof nav.openSession === "function") { nav.openSession(String(sessionId)); return; }
-        } catch (e) { }
-        const ok = await copyText(String(sessionId));
-        setNotice(ok
-          ? { kind: "info", text: "会话 id 已复制，可在宿主的会话列表里打开。" }
-          : { kind: "warn", text: "会话 id：" + String(sessionId) });
-      }
-
-      function moveToLane(card, laneId, index) {
-        const b = boardStateRef.current;
-        if (!b) return;
-        const sameLane = (STATUS[card.status] || STATUS.todo).lane === laneId;
-        if (!sameLane) {
-          if (laneId === "progress" && STARTABLE.indexOf(card.status) >= 0) { startTask(card); return; }
-          setNotice({ kind: "warn", text: "状态由 AI 与交付流程推进，不能手动换栏。" });
-          return;
-        }
-        const inLane = b.cards.filter((c) => (STATUS[c.status] || STATUS.todo).lane === laneId);
-        const rest = b.cards.filter((c) => c.id !== card.id);
-        let anchorId = null, after = false;
-        if (index < inLane.length) {
-          if (inLane[index].id === card.id) return;
-          anchorId = inLane[index].id;
-        } else if (inLane.length) {
-          const last = inLane[inLane.length - 1];
-          if (last.id !== card.id) { anchorId = last.id; after = true; }
-        }
-        const out = rest.slice();
-        let at = out.length;
-        if (anchorId) {
-          const found = out.findIndex((c) => c.id === anchorId);
-          if (found >= 0) at = after ? found + 1 : found;
-        }
-        out.splice(at, 0, card);
-        editSeqRef.current += 1;
-        dirtyRef.current = true;
-        setBoard(Object.assign({}, b, { cards: out }));
-      }
-
-      const hitTest = useCallback((x, y) => {
-        const el = boardRef.current; if (!el) return null;
-        const lanes = Array.prototype.slice.call(el.querySelectorAll("[data-lane]"));
-        let best = null, bestDist = Infinity;
-        for (let i = 0; i < lanes.length; i++) {
-          const r = lanes[i].getBoundingClientRect();
-          if (x >= r.left - 8 && x <= r.right + 8 && y >= r.top - 44 && y <= r.bottom + 8) { best = lanes[i]; break; }
-          const cx = (r.left + r.right) / 2; const d = Math.abs(x - cx) + (y >= r.top - 44 && y <= r.bottom + 8 ? 0 : 400);
-          if (d < bestDist) { bestDist = d; best = lanes[i]; }
-        }
-        if (!best) return null;
-        const laneId = best.getAttribute("data-lane");
-        const els = Array.prototype.slice.call(best.querySelectorAll(".kb-card"));
-        let index = els.length;
-        for (let i = 0; i < els.length; i++) { const r = els[i].getBoundingClientRect(); if (y < r.top + r.height / 2) { index = i; break; } }
-        return { lane: laneId, index: index };
-      }, []);
-      const onPointerMove = useCallback((e) => {
-        const d = dragRef.current; if (!d) return;
-        if (!d.started) { if (Math.abs(e.clientX - d.sx) + Math.abs(e.clientY - d.sy) < 8) return; d.started = true; setDragId(d.id); try { document.body.style.userSelect = "none"; } catch (x) {} }
-        if (e.cancelable) e.preventDefault();
-        setGhost({ x: e.clientX - d.ox, y: e.clientY - d.oy, w: d.w });
-        const hit = hitTest(e.clientX, e.clientY); overRef.current = hit; setOver(hit);
-      }, [hitTest]);
-      const onPointerUp = useCallback(() => {
-        const d = dragRef.current;
-        window.removeEventListener("pointermove", onPointerMove);
-        window.removeEventListener("pointerup", onPointerUp);
-        window.removeEventListener("pointercancel", onPointerUp);
-        try { document.body.style.userSelect = ""; } catch (x) {}
-        dragRef.current = null;
-        const hit = overRef.current; overRef.current = null;
-        setDragId(null); setGhost(null); setOver(null);
-        if (!d) return;
-        if (d.started) { if (hit) { const card = (boardStateRef.current ? boardStateRef.current.cards : []).find((c) => c.id === d.id); if (card) moveToLane(card, hit.lane, hit.index); } }
-        else { setOpenId(d.id); }
-      }, [onPointerMove]);
-      const cancelDrag = useCallback(() => {
-        window.removeEventListener("pointermove", onPointerMove);
-        window.removeEventListener("pointerup", onPointerUp);
-        window.removeEventListener("pointercancel", onPointerUp);
-        try { document.body.style.userSelect = ""; } catch (x) {}
-        dragRef.current = null; overRef.current = null; setDragId(null); setGhost(null); setOver(null);
-      }, [onPointerMove, onPointerUp]);
-      function onCardPointerDown(e, card) {
-        if (e.button !== undefined && e.button !== 0) return;
-        const rect = e.currentTarget.getBoundingClientRect();
-        dragRef.current = { id: card.id, sx: e.clientX, sy: e.clientY, ox: e.clientX - rect.left, oy: e.clientY - rect.top, w: rect.width, started: false };
-        window.addEventListener("pointermove", onPointerMove);
-        window.addEventListener("pointerup", onPointerUp);
-        window.addEventListener("pointercancel", onPointerUp);
-      }
-      function onCardKey(e, card) {
-        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpenId(card.id); return; }
-        if (e.altKey && (e.key === "ArrowRight" || e.key === "ArrowLeft")) {
-          e.preventDefault();
-          const laneId = (STATUS[card.status] || STATUS.todo).lane;
-          const idx = LANES.findIndex((l) => l.id === laneId);
-          const next = e.key === "ArrowRight" ? Math.min(LANES.length - 1, idx + 1) : Math.max(0, idx - 1);
-          if (next !== idx) moveToLane(card, LANES[next].id, 0);
-        }
-      }
-
-      const q = query.trim().toLowerCase();
-      function matches(card) {
-        if (attentionOnly && NEEDS_ATTENTION.indexOf(card.status) < 0) return false;
-        if (filterPri !== "all" && card.priority !== filterPri) return false;
-        if (filterLabels.length) { if (!(card.labels || []).some((id) => filterLabels.indexOf(id) >= 0)) return false; }
-        if (q) { const hay = (card.title + " " + (card.description || "") + " " + (card.acceptance || "") + " " + (card.labels || []).join(" ")).toLowerCase(); if (hay.indexOf(q) < 0) return false; }
-        return true;
-      }
-      const byLane = useMemo(() => { const m = {}; LANES.forEach((l) => { m[l.id] = []; }); cards.forEach((c) => { const lane = (STATUS[c.status] || STATUS.todo).lane; if (m[lane]) m[lane].push(c); }); return m; }, [cards]);
-      const stats = useMemo(() => {
-        let done = 0, attention = 0, running = 0;
-        cards.forEach((c) => { if (c.status === "done") done += 1; if (NEEDS_ATTENTION.indexOf(c.status) >= 0) attention += 1; if (c.status === "running" || c.status === "reviewing") running += 1; });
-        return { done, attention, running, total: cards.length, open: cards.length - done };
-      }, [cards]);
-      const govItems = useMemo(() => {
-        if (!govStats) return null;
-        const reviewStats = govStats.review || {};
-        const cycleStats = govStats.cycle || {};
-        const tokenStats = govStats.tokens || {};
-        const queueStats = govStats.queue || {};
-        const unverified = Math.max(0, Number(reviewStats.reviewedTasks || 0) - Number(reviewStats.verifiedTasks || 0));
-        return [
-          { key: "firstPass", label: "一次通过率", value: formatRate(reviewStats.firstPassRate), title: "首条评审即通过的任务占比" },
-          { key: "rework", label: "返工率", value: formatRate(reviewStats.reworkRate), title: "出现过返工或评审超过一轮的任务占比" },
-          { key: "cycle", label: "平均周期", value: formatCycle(cycleStats.avgMs), title: "已完成任务从首次执行到签字的平均耗时" },
-          { key: "unverified", label: "未机器验证", value: String(unverified), title: "已评审但从未运行机器验证的任务数", tone: unverified ? "warn" : null },
-          { key: "tokens", label: "Token 总量", value: formatTokens(tokenStats.total || 0), title: "本看板累计记录的 token 消耗" },
-          { key: "queue", label: "待处理", value: String(Number(queueStats.waiting || 0) + Number(queueStats.running || 0)), title: "排队中与执行中的任务数" },
-        ];
-      }, [govStats]);
-      const flow = LANES.map((l) => ({ lane: l, n: byLane[l.id].length }));
-
-      function renderCard(card, animate, delay) {
-        const labels = (card.labels || []).map((id) => LABEL_MAP[id]).filter(Boolean);
-        const due = dueInfo(card.due);
-        const st = STATUS[card.status] || STATUS.todo;
-        const missingAcceptance = card.status === "todo" && !String(card.acceptance || "").trim();
-        const pr = card.pr || null;
-        const worktreeInfo = cardWorktree(card);
-        return h("article", {
-          key: card.id, className: "kb-card" + (animate && entered ? " kb-anim" : ""), "data-id": card.id, "data-pri": card.priority || "none",
-          role: "button", tabIndex: 0, "aria-label": card.title || "未命名任务",
-          style: animate && entered ? { animationDelay: delay + "ms" } : null,
-          onPointerDown: (e) => onCardPointerDown(e, card), onKeyDown: (e) => onCardKey(e, card),
+    function Card(props) {
+      const item = props.item;
+      const card = item.card;
+      const pending = item.pending;
+      const lane = item.lane;
+      const view = item.view;
+      const badges = badgesOf(card, { newResult: item.newResult, openedAt: props.openedAt });
+      const tone = stateTone(card.state);
+      const aria = [view.title, view.status.label, view.evidence.text].filter(Boolean).join("，");
+      const onOpen = function () {
+        if (card.archived) return;
+        props.onOpen(card);
+      };
+      return h("article", {
+        className: "kb-card",
+        "data-state": card.state,
+        "data-archived": card.archived ? "true" : "false",
+        "data-compact": card.compact ? "true" : "false",
+        style: { "--sc": tone },
+        role: card.archived ? "note" : "button",
+        tabIndex: card.archived ? -1 : 0,
+        "aria-label": aria,
+        title: (card.title || "") + (card.workspace && card.workspace.path ? "\n" + card.workspace.path : ""),
+        onClick: onOpen,
+        onKeyDown: function (event) {
+          if (card.archived) return;
+          if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(); }
         },
-          h("div", { className: "kb-cardtop" },
-            h(Badge, { tone: st.tone }, st.label),
-            missingAcceptance ? h(Badge, { tone: "warn" }, "缺验收") : null,
-            labels.length ? h("div", { className: "kb-chips" }, labels.map((l) => h("span", { key: l.id, className: "kb-chip", "data-tone": l.tone }, h("i", { className: "kb-chipdot" }), l.name))) : null
-          ),
-          h("p", { className: "kb-cardtitle" }, card.title || "未命名任务"),
-          h("div", { className: "kb-cardmeta" },
-            card.round ? h("span", { className: "kb-metaitem" }, "第 " + card.round + " 轮") : null,
-            due ? h("span", { className: "kb-duetag", "data-state": due.state }, h(Icon, { name: "calendar", size: 12 }), due.text) : null,
-            pr ? h("span", { className: "kb-metaitem" }, "#" + (pr.number || "")) : null,
-            worktreeInfo ? h("span", { className: "kb-wtbadge", title: (worktreeInfo.path ? "工作树 " + worktreeInfo.path + " · " : "") + "分支 " + worktreeInfo.branch }, h(Icon, { name: "branch", size: 11 }), h("span", null, shortBranch(worktreeInfo.branch))) : null,
-            h("span", { className: "kb-spacer" }),
-            card.executor ? h("span", { className: "kb-metaitem", title: "执行模型" }, modelLabel(card.executor)) : null
-          )
-        );
-      }
-      function renderLane(lane, ci) {
-        const list = byLane[lane.id].filter(matches);
-        const isOver = over && over.lane === lane.id;
-        const nodes = []; let inserted = false;
-        for (let i = 0; i <= list.length; i++) {
-          if (isOver && over.index === i && !inserted) { nodes.push(h("div", { key: "ph", className: "kb-ph" })); inserted = true; }
-          if (i < list.length) nodes.push(renderCard(list[i], true, i * 45));
-        }
-        if (isOver && !inserted) nodes.push(h("div", { key: "ph", className: "kb-ph" }));
-        const empty = list.length === 0 && !isOver;
-        return h("section", { key: lane.id, className: "kb-lane" + (entered ? " kb-anim" : ""), "data-lane": lane.id, "data-over": isOver ? "true" : "false", "aria-label": lane.name, style: entered ? { animationDelay: ci * 55 + "ms" } : null },
-          h("div", { className: "kb-lanehead" },
-            h("div", { className: "kb-lanetitlerow" },
-              h("span", { className: "kb-lanedot", style: { "--cdot": lane.dot } }),
-              h("h2", { className: "kb-lanetitle" }, lane.name),
-              h("span", { className: "kb-lanetag" }, lane.actor),
-              h("span", { className: "kb-count" }, String(list.length)),
-              h("button", { type: "button", className: "kb-coladd", "aria-label": "新建任务", onClick: () => newTask() }, h(Icon, { name: "plus", size: 14 }))
-            )
-          ),
-          h("div", { className: "kb-lanebody" },
-            empty ? h("div", { className: "kb-laneempty" }, h(Icon, { name: "board", size: 22 }), h("div", { className: "kb-emptytitle" }, "暂无任务")) : nodes
-          ),
-          h("div", { className: "kb-lanefoot" },
-            composer === lane.id
-              ? h(Composer, { key: "c", placeholder: "需要做什么？", onCancel: () => setComposer(null), onSubmit: (text) => { addCard(lane.id, text); setComposer(lane.id); } })
-              : h("button", { type: "button", className: "kb-addrow", onClick: () => setComposer(lane.id) }, h(Icon, { name: "plus", size: 15 }), "添加任务")
-          )
-        );
-      }
-
-      const SETTING_NUMBERS = [
-        { key: "concurrency", label: "同时执行数", min: 1, max: 8 },
-        { key: "reviewConcurrency", label: "同时评审数", min: 1, max: 8 },
-        { key: "maxRounds", label: "返工轮数上限", min: 1, max: 8 },
-        { key: "maxMinutesPerRun", label: "单次执行时限（分钟）", min: 1, max: 120 },
-        { key: "maxMinutesPerTask", label: "任务总时限（分钟）", min: 1, max: 480 },
-        { key: "maxTokensPerTask", label: "任务 token 上限", min: 1000, max: 6000000 },
-      ];
-      function openSettings() {
-        const b = boardStateRef.current || board;
-        if (!b) { setNotice({ kind: "warn", text: "看板未就绪" }); return; }
-        setSettingsDraft(Object.assign({}, DEFAULT_SETTINGS, b.settings || {}));
-        setSettingsErr(null);
-        setSettingsOpen(true);
-      }
-      function closeSettings() { setSettingsOpen(false); }
-      function setSettingsField(key, value) { setSettingsDraft((d) => Object.assign({}, d || {}, { [key]: value })); }
-      async function saveSettings() {
-        if (!wsIdRef.current) { setSettingsErr("工作区未就绪"); return; }
-        setSettingsBusy(true);
-        setSettingsErr(null);
-        try {
-          const d = await api("/settings", { method: "POST", body: JSON.stringify({ workspaceId: wsIdRef.current, expectedRevision: serverRevRef.current, settings: settingsDraft }) });
-          if (d && d.ok) {
-            if (d.board) { const nb = normalizeBoard(d.board); if (nb) { serverRevRef.current = nb.revision; setBoard(nb); } }
-            try {
-              if (settingsDraft && settingsDraft.authToken) lsSet("dsh.task-board.token", settingsDraft.authToken);
-              else lsSet("dsh.task-board.token", "");
-            } catch (e) { }
-            setSettingsOpen(false);
-            setNotice({ kind: "ok", text: "设置已保存" });
-          } else {
-            setSettingsErr((CODE_TEXT[d && d.code] || "保存失败") + (d && d.error ? "：" + d.error : ""));
-          }
-        } catch (e) {
-          setSettingsErr(e && e.offline ? "Host 不可用" : String((e && e.message) || "保存失败"));
-        } finally {
-          setSettingsBusy(false);
-        }
-      }
-
-      const openCard = openId ? cards.find((c) => c.id === openId) : null;
-      const gitBad = gitInfo && (!gitInfo.isRepo || !gitInfo.hasHead);
-
-      return h("div", { className: "kb", ref: boardRef, "data-testid": "task-board" },
-        h("div", { className: "kb-top" },
-          h("div", { className: "kb-titlebar" },
-            h("div", { className: "kb-titlewrap" },
-              h("h1", { className: "kb-title" },
-                h("span", { className: "kb-world" },
-                  h("button", { type: "button", className: "kb-switcher", "aria-haspopup": "menu", "aria-expanded": switcher ? "true" : "false", onClick: () => setSwitcher((v) => !v) },
-                    h(Icon, { name: "board", size: 15 }), currentWs.title || currentWs.id, h(Icon, { name: "chevron", size: 13 })),
-                  switcher ? h("div", { className: "kb-menu", role: "menu" },
-                    wsList.map((w) => h("button", { key: w.id, type: "button", className: "kb-menuitem", role: "menuitem", "aria-current": w.id === wsId ? "true" : "false", onClick: () => switchWorkspace(w.id) },
-                      h("b", null, w.title || w.id), w.path ? h("small", null, w.path) : null))) : null
-                )
-              ),
-              h("p", { className: "kb-sub" },
-                h("span", { className: "kb-stat" }, h("b", null, String(stats.open)), h("span", null, "未完成")),
-                h("span", { className: "kb-sep" }, "·"),
-                h("span", { className: "kb-stat" }, h("b", null, String(stats.done)), h("span", null, "已完成")),
-                h("span", { className: "kb-sep" }, "·"),
-                h("span", { className: "kb-stat" }, h("b", null, String(stats.running)), h("span", null, "AI 运行中"))
-              )
-            ),
-            h("div", { className: "kb-actions" },
-              h("button", { type: "button", className: "kb-btn kb-btn--ghost", onClick: openSettings, title: "看板设置" }, "设置"),
-              h("button", { type: "button", className: "kb-btn kb-btn--primary", onClick: () => newTask() }, h(Icon, { name: "plus", size: 15 }), "新建任务")
-            )
-          ),
-          govItems ? h("div", { className: "kb-gov", role: "group", "aria-label": "治理指标" },
-            govItems.map((it) => h("span", { key: it.key, className: "kb-govitem", "data-tone": it.tone || null, title: it.title },
-              h("span", { className: "kb-govkey" }, it.label), h("b", null, it.value)))) : null,
-          h("div", { className: "kb-flow", "aria-hidden": "true" },
-            flow.map((f) => h("div", { key: f.lane.id, className: "kb-flowseg", style: { flexGrow: Math.max(f.n, 0.001), background: f.lane.flow }, title: f.lane.name + ": " + f.n }))),
-          h("div", { className: "kb-toolbar" },
-            h("div", { className: "kb-search" }, h(Icon, { name: "search", size: 15 }),
-              h("input", { ref: searchRef, type: "search", value: query, placeholder: "搜索任务…", "aria-label": "搜索任务", onChange: (e) => setQuery(e.target.value), onKeyDown: (e) => { if (e.key === "Escape") { setQuery(""); e.currentTarget.blur(); } } })),
-            h("button", { type: "button", className: "kb-pill kb-pill--alert", "aria-pressed": attentionOnly ? "true" : "false", onClick: () => setAttentionOnly((v) => !v) }, h(Icon, { name: "alert", size: 13 }), "需要你处理 " + stats.attention),
-            h("div", { className: "kb-pills", role: "group", "aria-label": "标签" },
-              h("button", { type: "button", className: "kb-pill", "aria-pressed": filterLabels.length === 0 ? "true" : "false", onClick: () => setFilterLabels([]) }, "全部"),
-              LABELS.map((l) => h("button", { key: l.id, type: "button", className: "kb-pill", "aria-pressed": filterLabels.indexOf(l.id) >= 0 ? "true" : "false", style: { "--c": "var(--t-" + l.tone + ")" }, onClick: () => setFilterLabels((prev) => prev.indexOf(l.id) >= 0 ? prev.filter((x) => x !== l.id) : prev.concat([l.id])) }, h("span", { className: "kb-dot" }), l.name))),
-            h("span", { className: "kb-grow" }),
-            h("div", { className: "kb-selectwrap" },
-              h("select", { className: "kb-select", value: filterPri, "aria-label": "优先级", onChange: (e) => setFilterPri(e.target.value) },
-                h("option", { value: "all" }, "全部优先级"),
-                h("option", { value: "high" }, "高"),
-                h("option", { value: "medium" }, "中"),
-                h("option", { value: "low" }, "低"),
-                h("option", { value: "none" }, "无")),
-              h(Icon, { name: "chevron", size: 13 }))
-          )
-        ),
-        gitBad ? h("div", { className: "kb-banner", "data-kind": "error" },
-          h(Icon, { name: "alert", size: 15 }),
-          gitInfo && !gitInfo.isRepo ? "该工作区不是 Git 仓库，任务无法执行。请先 git init 并提交一次。" : "仓库还没有任何提交（HEAD 不存在），无法创建工作树。",
-          h("button", { type: "button", className: "kb-btn kb-btn--ghost kb-btn--sm", onClick: () => probeGit(currentWs) }, "重新检测"),
-          gitInfo && !gitInfo.isRepo ? h("button", { type: "button", className: "kb-btn kb-btn--primary kb-btn--sm", disabled: initGitBusy, onClick: createGitRepo }, initGitBusy ? "正在创建会话…" : "立即创建 Git 仓库") : null) : null,
-        notice ? h("div", { className: "kb-banner", "data-kind": notice.kind === "error" ? "error" : "warn", "aria-live": "polite", role: notice.kind === "error" ? "alert" : "status" }, h(Icon, { name: "alert", size: 15 }), notice.text) : null,
-
-        h("div", { className: "kb-board" }, LANES.map((l, i) => renderLane(l, i))),
-
-        openCard ? [
-          h("div", { key: "scrim", className: "kb-scrim", onClick: dismissDrawer }),
-          h(Drawer, {
-            key: openCard.id, card: openCard, gitInfo: gitInfo, saveState: saveState, workspaceId: wsId,
-            models: models, modelLabel: modelLabel, onReloadModels: loadModels,
-            startError: startError && startError.taskId === openCard.id ? startError.text : null,
-            onPatch: (o) => patch(openCard.id, o),
-            onStart: () => startTask(openCard),
-            onAction: (action, payload) => runAction(openCard, action, payload),
-            onExportPatch: () => exportPatch(openCard),
-            onDelete: () => deleteTask(openCard.id),
-            onClose: dismissDrawer,
-            onNotice: setNotice,
-            onOpenSession: (sessionId) => openSession(openCard, sessionId),
-          }),
-        ] : null,
-
-        settingsOpen && settingsDraft ? [
-          h("div", { key: "sscrim", className: "kb-scrim", onClick: closeSettings }),
-          h("div", {
-            key: "spanel", role: "dialog", "aria-modal": "true", "aria-label": "看板设置",
-            style: { position: "fixed", top: "8vh", left: "50%", transform: "translateX(-50%)", width: "min(460px, 92vw)", maxHeight: "80vh", overflow: "auto", background: "var(--surface, #fff)", color: "var(--ink, #111)", border: "1px solid var(--line, #ddd)", borderRadius: "14px", boxShadow: "0 20px 60px rgba(0,0,0,.28)", padding: "20px", zIndex: 60 },
-          },
-            h("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" } },
-              h("h2", { style: { margin: 0, fontSize: "17px" } }, "看板设置"),
-              h("button", { type: "button", className: "kb-btn kb-btn--ghost kb-btn--sm", onClick: closeSettings }, "关闭")),
-            h("div", { style: { display: "grid", gap: "10px" } },
-              SETTING_NUMBERS.map((f) => h("label", { key: f.key, style: { display: "grid", gridTemplateColumns: "1fr 120px", alignItems: "center", gap: "10px", fontSize: "13px" } },
-                h("span", null, f.label),
-                h("input", { type: "number", min: f.min, max: f.max, value: settingsDraft[f.key], onChange: (e) => setSettingsField(f.key, e.target.value === "" ? "" : Number(e.target.value)), style: { height: "30px", borderRadius: "8px", border: "1px solid var(--line, #ddd)", padding: "0 8px", font: "inherit" } }))),
-              h("label", { style: { display: "grid", gridTemplateColumns: "1fr 120px", alignItems: "center", gap: "10px", fontSize: "13px" } },
-                h("span", null, "PR 模式"),
-                h("select", { value: settingsDraft.prMode || "auto", onChange: (e) => setSettingsField("prMode", e.target.value) },
-                  h("option", { value: "auto" }, "auto"), h("option", { value: "local" }, "local"), h("option", { value: "manual" }, "manual"))),
-              h("label", { style: { display: "grid", gridTemplateColumns: "1fr 120px", alignItems: "center", gap: "10px", fontSize: "13px" } },
-                h("span", null, "推送授权"),
-                h("select", { value: settingsDraft.pushConsent || "first", onChange: (e) => setSettingsField("pushConsent", e.target.value) },
-                  h("option", { value: "first" }, "first"), h("option", { value: "always" }, "always"), h("option", { value: "never" }, "never"))),
-              h("label", { style: { display: "grid", gridTemplateColumns: "1fr 120px", alignItems: "center", gap: "10px", fontSize: "13px" } },
-                h("span", null, "鉴权 token"),
-                h("input", { type: "text", value: settingsDraft.authToken || "", placeholder: "留空=不鉴权", onChange: (e) => setSettingsField("authToken", e.target.value), style: { height: "30px", borderRadius: "8px", border: "1px solid var(--line, #ddd)", padding: "0 8px", font: "inherit" } }))),
-            settingsErr ? h("p", { style: { color: "#c0392b", fontSize: "12px", marginTop: "10px" } }, settingsErr) : null,
-            h("div", { style: { display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "16px" } },
-              h("button", { type: "button", className: "kb-btn kb-btn--ghost", onClick: closeSettings }, "取消"),
-              h("button", { type: "button", className: "kb-btn kb-btn--primary", disabled: settingsBusy, onClick: saveSettings }, settingsBusy ? "保存中…" : "保存设置"))
-          ),
-        ] : null,
-
-        ghost ? h("div", { className: "kb-ghost", style: { transform: "translate(" + ghost.x + "px," + ghost.y + "px)", width: ghost.w + "px" } },
-          renderCard(cards.find((c) => c.id === dragId) || { id: "x", title: "", labels: [], status: "todo" }, false, 0)) : null
-      );
-    }
-
-    function Composer(props) {
-      const [text, setText] = useState("");
-      const ref = useRef(null);
-      useEffect(() => { if (ref.current) ref.current.focus(); }, []);
-      function submit() { if (!text.trim()) { props.onCancel(); return; } props.onSubmit(text); setText(""); }
-      return h("div", { className: "kb-composer" },
-        h("textarea", { ref: ref, value: text, rows: 2, placeholder: props.placeholder, onChange: (e) => setText(e.target.value), onKeyDown: (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } else if (e.key === "Escape") { e.preventDefault(); props.onCancel(); } } }),
-        h("div", { className: "kb-composerrow" },
-          h("button", { type: "button", className: "kb-btn kb-btn--ghost kb-btn--sm", onClick: props.onCancel }, "取消"),
-          h("button", { type: "button", className: "kb-btn kb-btn--primary kb-btn--sm", onClick: submit }, "添加"))
-      );
-    }
-
-    const RUN_LINE = {
-      todo: { tone: "", icon: "flag", text: "还没开始。写清目标与验收，交给 AI 执行。" },
-      queued: { tone: "accent", icon: "play", text: "已排队，等待执行槽位。" },
-      worktree_preparing: { tone: "accent", icon: "play", text: "正在准备任务工作树。" },
-      running: { tone: "accent", icon: "play", text: "AI 正在独立工作树里执行。" },
-      needs_input: { tone: "warn", icon: "chat", text: "AI 在等你回答。" },
-      awaiting_approval: { tone: "warn", icon: "alert", text: "AI 在等你批准下一步操作。" },
-      changes_requested: { tone: "warn", icon: "alert", text: "评审打回，AI 将按意见返工。" },
-      awaiting_review: { tone: "review", icon: "search", text: "执行完成，等待 AI 评审。" },
-      reviewing: { tone: "review", icon: "search", text: "AI 评审中。" },
-      finalizing: { tone: "review", icon: "search", text: "评审通过，正在生成交付物。" },
-      awaiting_signoff: { tone: "signoff", icon: "check", text: "评审通过。看完交付物就可以签字。" },
-      pr_pending: { tone: "warn", icon: "alert", text: "本地已完成，补建 PR 后再签字。" },
-      finalize_failed: { tone: "error", icon: "alert", text: "评审已通过，但交付物生成失败，可补建 PR 或导出补丁。" },
-      done: { tone: "done", icon: "check", text: "已完成。" },
-      blocked: { tone: "error", icon: "alert", text: "受阻，需要你处理（原因见执行记录）。" },
-      failed: { tone: "error", icon: "alert", text: "执行失败，需要你处理。" },
-      cancelled: { tone: "", icon: "flag", text: "已取消。改好需求可以重新开始。" },
-    };
-
-    function Drawer(props) {
-      const { card, gitInfo } = props;
-      const asideRef = useRef(null);
-      const titleRef = useRef(null);
-      const [confirmDel, setConfirmDel] = useState(false);
-      const [busy, setBusy] = useState(null);
-      const [actionError, setActionError] = useState(null);
-      const [note, setNote] = useState("");
-      const [answer, setAnswer] = useState("");
-      const [mergeAfter, setMergeAfter] = useState(false);
-      const [showExec, setShowExec] = useState(function () {
-        const settled = LIVE_STATUS.indexOf(card.status) >= 0 || card.status === "awaiting_signoff" || card.status === "pr_pending" || card.status === "finalize_failed" || card.status === "done";
-        return budgetCustom(card) || baseCustom(card) || (!settled && (!!card.executor || !!card.reviewer));
-      });
-      const [showMeta, setShowMeta] = useState(false);
-      const autoExecRef = useRef(false);
-      const [auditStatus, setAuditStatus] = useState("idle");
-      const [auditEntries, setAuditEntries] = useState([]);
-      const [auditError, setAuditError] = useState("");
-
-      const st = STATUS[card.status] || STATUS.todo;
-      const lane = LANE_BY_ID[st.lane] || LANES[0];
-      const run = RUN_LINE[card.status] || RUN_LINE.todo;
-      const budget = card.budget || {};
-      const base = card.base || {};
-      const catalog = props.models || { status: "loading", groups: [], failures: [], default: null, error: "" };
-      const modelName = typeof props.modelLabel === "function" ? props.modelLabel : function (v) { return String(v || ""); };
-      const runs = Array.isArray(card.runs) ? card.runs : [];
-      const reviews = Array.isArray(card.reviews) ? card.reviews : [];
-      const lastReview = reviews.length ? reviews[reviews.length - 1] : null;
-      const lastVerification = lastReview && lastReview.verification ? lastReview.verification : null;
-      const execRuns = runs.filter(function (r) { return !r || !r.kind || r.kind === "execute"; });
-      const worktree = (function () { for (let i = runs.length - 1; i >= 0; i--) { if (runs[i] && runs[i].worktree) return runs[i].worktree; } return card.worktree || null; })();
-      const delivery = card.delivery || null;
-      const pr = card.pr || null;
-      const sign = card.signoff || null;
-      const pending = card.pending || null;
-      const customBudget = budgetCustom(card);
-      const title = String(card.title || "");
-      const missingTitle = !title.trim();
-      const missingAcceptance = !String(card.acceptance || "").trim();
-      const missingBranch = base.mode === "branch" && !String(base.branch || "").trim();
-      const gitBlocked = !!gitInfo && (!gitInfo.isRepo || !gitInfo.hasHead || !!gitInfo.isLinkedWorktree);
-      const startable = STARTABLE.indexOf(card.status) >= 0;
-      const retryMode = ["blocked", "failed", "cancelled"].indexOf(card.status) >= 0;
-      const canRun = startable && !missingTitle && !missingAcceptance && !missingBranch && !gitBlocked;
-      const live = LIVE_STATUS.indexOf(card.status) >= 0;
-      const canSignoff = card.status === "awaiting_signoff" || card.status === "pr_pending";
-      const verifyWarning = canSignoff && !!lastVerification && lastVerification.ran === false;
-      const canCreatePr = card.status === "awaiting_signoff" || card.status === "pr_pending" || card.status === "finalize_failed";
-      const canMerge = card.status === "done";
-      const canCleanup = card.status === "done" || card.status === "cancelled";
-      const canPatch = !!delivery && delivery.patchAvailable !== false;
-      const locked = live || canSignoff || card.status === "done";
-      const startHint = gitBlocked
-        ? (gitInfo && gitInfo.isLinkedWorktree ? "当前是 linked worktree，不能执行任务" : gitInfo && gitInfo.isRepo ? "仓库还没有提交，无法创建工作树" : "工作区不是 Git 仓库")
-        : missingTitle ? "先写一句任务目标"
-        : missingAcceptance ? "补全验收标准后才能开始"
-        : missingBranch ? "填写基线分支名" : "交给 AI 在独立工作树里执行";
-
-      const execSummary = [
-        card.executor ? modelName(card.executor) : "默认模型",
-        card.reviewer ? "评审 " + modelName(card.reviewer) : "评审同执行",
-        customBudget
-          ? (budget.maxRounds || DEFAULT_BUDGET.maxRounds) + " 轮 / " + formatTokens(budget.maxTokens || DEFAULT_BUDGET.maxTokens) + " token / " + (budget.maxMinutes || DEFAULT_BUDGET.maxMinutes) + " 分钟"
-          : "默认预算",
-        base.mode === "branch" ? "基线 " + (base.branch || "未填分支") : "基线 HEAD",
-        base.ignoreDirty ? "忽略未提交" : null,
-      ].filter(Boolean).join(" · ");
-      const metaSummary = [
-        PRIORITY_NAME[card.priority || "none"],
-        dueInfo(card.due) ? dueInfo(card.due).text : null,
-        (card.labels || []).map(function (id) { const l = LABEL_MAP[id]; return l ? l.name : null; }).filter(Boolean).join("、"),
-      ].filter(Boolean).join(" · ");
-      const runMeta = live
-        ? [
-          card.round ? "第 " + card.round + " 轮" : null,
-          worktree && worktree.branch ? worktree.branch : null,
-          pending && pending.kind === "needs_input" ? "待回答" : null,
-          pr ? "PR #" + pr.number : null,
-        ].filter(Boolean).join(" · ")
-        : startable ? "启动参数 · " + execSummary
-        : [
-          card.round ? "第 " + card.round + " 轮" : null,
-          worktree && worktree.branch ? worktree.branch : null,
-          delivery && delivery.diffStat ? delivery.diffStat : null,
-          pr ? "PR #" + pr.number + (pr.state ? " · " + pr.state : "") : null,
-          sign ? "已签字" : null,
-        ].filter(Boolean).join(" · ");
-
-      const rows = [];
-      if (card.round) rows.push(["轮次", "第 " + card.round + " 轮"]);
-      if (worktree) rows.push(["工作树", h("code", null, (worktree.branch || "") + (worktree.path ? " · " + worktree.path : ""))]);
-      if (delivery) rows.push(["交付物", delivery.mode === "pr" ? "PR" : "本地变更集"]);
-      if (pr) rows.push(["PR", "#" + (pr.number || "") + (pr.state ? " · " + pr.state : "") + (pr.checks ? " · checks " + pr.checks : "")]);
-      if (sign) rows.push(["签字", String(sign.by || "我") + (sign.at ? " · " + fmtTime(sign.at) : "") + (sign.note ? " · " + sign.note : "")]);
-      const hasRecord = rows.length > 0 || execRuns.length > 0 || reviews.length > 0 || !!pending || !!delivery || !!card.error;
-      const auditNum = hasRecord ? "05" : "04";
-      const auditSummary = auditStatus === "loading" ? "加载中…" : auditStatus === "error" ? "加载失败" : auditStatus === "ok" ? (auditEntries.length ? auditEntries.length + " 条" : "暂无") : "最近 50 条";
-
-      const saveLabel = props.saveState === "error" ? "仅保存在本地" : props.saveState === "pending" ? "保存中…" : "已保存";
-      const saveIcon = props.saveState === "error" ? "alert" : "check";
-      const trimmedTitle = String(card.title || "").trim();
-      const delName = trimmedTitle ? (trimmedTitle.length > 14 ? trimmedTitle.slice(0, 14) + "…" : trimmedTitle) : "未命名任务";
-
-      const priorityOptions = ["high", "medium", "low", "none"].map(function (p) { return h("option", { key: p, value: p }, PRIORITY_NAME[p]); });
-
-      function modelOptions(selected, emptyLabel) {
-        const current = String(selected || "");
-        const options = [h("option", { key: "__empty", value: "" }, emptyLabel)];
-        const known = {};
-        const groups = Array.isArray(catalog.groups) ? catalog.groups : [];
-        groups.forEach(function (group) {
-          if (!group) return;
-          const providerId = String(group.id || "");
-          const list = Array.isArray(group.models) ? group.models : [];
-          if (!providerId || !list.length) return;
-          const entries = list.filter(function (model) { return model && model.id; }).map(function (model) {
-            const value = providerId + "/" + String(model.id);
-            known[value] = true;
-            return h("option", { key: value, value: value }, model.name || String(model.id));
-          });
-          if (!entries.length) return;
-          options.push(h("optgroup", { key: "g:" + providerId, label: group.name || providerId }, entries));
-        });
-        if (current && !known[current]) {
-          options.push(h("option", { key: "__current", value: current }, "当前：" + current + "（不在目录）"));
-        }
-        return options;
-      }
-
-      function modelCatalogHint() {
-        const failures = Array.isArray(catalog.failures) ? catalog.failures : [];
-        const reload = h("button", { type: "button", className: "kb-btn--link", onClick: props.onReloadModels }, "重试");
-        if (catalog.status === "loading") return h("p", { className: "kb-hint" }, "正在加载模型目录…");
-        if (catalog.status === "error") {
-          return h("p", { className: "kb-hint", "data-kind": "warn" },
-            (catalog.error || "模型目录加载失败") + "；留空仍使用宿主默认模型。", reload);
-        }
-        if (failures.length) {
-          return h("p", { className: "kb-hint", "data-kind": "warn" },
-            "部分模型目录不可用：" + failures.map(function (failure) {
-              const label = failure.name || failure.id;
-              const message = String(failure.message || "").slice(0, 120);
-              return label ? label + "：" + message : message;
-            }).join("；") + "。仍可选择其他模型或留空。", reload);
-        }
-        if (!Array.isArray(catalog.groups) || !catalog.groups.length) {
-          return h("p", { className: "kb-hint", "data-kind": "warn" }, "宿主没有提供可用的模型目录；留空仍使用宿主默认模型。");
-        }
-        return null;
-      }
-
-      const defaultRoute = catalog.default && catalog.default.provider && catalog.default.model
-        ? String(catalog.default.provider) + "/" + String(catalog.default.model)
-        : "";
-      const defaultModelName = defaultRoute ? modelName(defaultRoute) : "";
-      const defaultModelHint = defaultModelName && defaultModelName !== defaultRoute ? "（" + defaultModelName + "）" : "";
-
-      useEffect(function () {
-        const prev = (typeof document !== "undefined" ? document.activeElement : null);
-        function onKey(e) {
-          if (e.key !== "Tab") return;
-          const root = asideRef.current;
-          if (!root) return;
-          const list = Array.prototype.slice.call(root.querySelectorAll('a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])')).filter(function (n) { return n.offsetParent !== null || n === document.activeElement; });
-          if (!list.length) return;
-          const first = list[0], last = list[list.length - 1];
-          if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-          else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-        }
-        document.addEventListener("keydown", onKey);
-        return function () {
-          document.removeEventListener("keydown", onKey);
-          if (prev && prev.focus) { try { prev.focus(); } catch (e) { } }
-        };
-      }, []);
-
-      useEffect(function () {
-        const t = setTimeout(function () {
-          const el = titleRef.current;
-          if (el && !locked && !String(card.title || "").trim()) {
-            autosize(el); el.focus();
-            if (el.setSelectionRange) { const v = el.value || ""; el.setSelectionRange(v.length, v.length); }
-          } else if (asideRef.current) {
-            try { asideRef.current.focus(); } catch (e) { }
-          }
-        }, 0);
-        return function () { clearTimeout(t); };
-      }, [card.id]);
-
-      useEffect(function () {
-        if (autoExecRef.current || !gitInfo) return;
-        autoExecRef.current = true;
-        if (startable && (!gitInfo.isRepo || !gitInfo.hasHead || gitInfo.dirty || gitInfo.isLinkedWorktree)) setShowExec(true);
-      }, [gitInfo]);
-
-      function toggleLabel(id) { const cur = card.labels || []; props.onPatch({ labels: cur.indexOf(id) >= 0 ? cur.filter(function (x) { return x !== id; }) : cur.concat([id]) }); }
-
-      function runAsync(key, fn) {
-        if (busy) return;
-        setActionError(null);
-        setBusy(key);
-        Promise.resolve().then(fn).catch(function (e) {
-          setActionError(e && e.message ? e.message : "操作失败");
-        }).then(function () { setBusy(null); });
-      }
-      function act(key, action, payload) { runAsync(key, function () { return props.onAction(action, payload); }); }
-      function doSignoff() { act("signoff", "signoff", { note: note.trim(), merge: !!mergeAfter }); }
-      function doReject() { act("reject", "reject", { note: note.trim() }); }
-      function doCancel() { act("cancel", "cancel", {}); }
-      function doApprove() { act("approve", "approve", { note: note.trim() }); }
-      function doRetry() { act("retry", "retry", {}); }
-      function doCreatePr() { act("create_pr", "create_pr", {}); }
-      function doMerge() { act("merge", "merge", {}); }
-      function doCleanup() { act("cleanup", "cleanup", {}); }
-      function doArchive() { act("archive", "archive", {}); }
-      function doAnswer() {
-        const text = answer.trim(); if (!text) return;
-        runAsync("answer", function () {
-          return props.onAction("answer", { text: text }).then(function () { setAnswer(""); });
-        });
-      }
-      function doPatch() { runAsync("patch", function () { return props.onExportPatch(); }); }
-      function askDelete() {
-        if (live) { props.onNotice({ kind: "warn", text: "任务正在执行中，请先取消再删除。" }); return; }
-        setConfirmDel(true);
-      }
-      function confirmDelete() {
-        const ok = props.onDelete();
-        if (ok === false) setConfirmDel(false);
-      }
-
-      function loadAudit() {
-        if (!props.workspaceId) {
-          setAuditEntries([]);
-          setAuditError("没有可用的工作区，无法加载审计记录。");
-          setAuditStatus("error");
-          return;
-        }
-        setAuditStatus("loading");
-        setAuditError("");
-        api("/audit?workspaceId=" + encodeURIComponent(props.workspaceId) + "&taskId=" + encodeURIComponent(card.id) + "&limit=50")
-          .then(function (d) {
-            if (d && d.ok && Array.isArray(d.entries)) {
-              setAuditEntries(d.entries.slice().reverse());
-              setAuditStatus("ok");
-            } else {
-              setAuditEntries([]);
-              setAuditError("Host 没有返回审计记录。");
-              setAuditStatus("error");
-            }
-          })
-          .catch(function (e) {
-            setAuditEntries([]);
-            setAuditError(e && e.status === 404 ? "Host 版本还不支持审计记录，看板其他功能不受影响。" : "审计记录加载失败，请稍后重试。");
-            setAuditStatus("error");
-          });
-      }
-      function onAuditToggle(e) {
-        if (!e.currentTarget || !e.currentTarget.open) return;
-        if (auditStatus === "idle" || auditStatus === "error") loadAudit();
-      }
-      function evidenceItem(ev, i) {
-        const failed = ev.exitCode != null && Number(ev.exitCode) !== 0;
-        const ok = ev.exitCode != null && Number(ev.exitCode) === 0;
-        return h("div", { key: i, className: "kb-ev", "data-tone": failed ? "error" : null },
-          h("div", { className: "kb-evtop" },
-            h(Icon, { name: ev.type === "verification" ? "check" : "chat", size: 12 }),
-            h("span", null, ev.type === "verification" ? "机器验证" : "记录"),
-            ev.command ? h("code", { className: "kb-evcmd" }, ev.command) : null,
-            ev.exitCode != null ? h("span", { className: "kb-evcode", "data-ok": ok ? "true" : "false" }, "exit " + ev.exitCode) : null,
-            ev.at ? h("span", null, fmtStamp(ev.at)) : null),
-          ev.text ? h("div", { className: "kb-evtext" }, ev.text) : null);
-      }
-      function evidenceNode(list, label) {
-        const items = normalizeEvidence(list);
-        if (!items.length) return null;
-        return h("details", { className: "kb-prompt" },
-          h("summary", null, label + " " + items.length + " 条"),
-          h("div", { className: "kb-evlist" }, items.map(evidenceItem)));
-      }
-      function verificationLine(v) {
-        const ran = !!(v && v.ran === true);
-        const passed = !!(v && v.passed === true);
-        const commands = v && Array.isArray(v.commands) ? v.commands : [];
-        const text = ran
-          ? "机器验证：已运行" + (commands.length ? " " + commands.length + " 条" : "") + "（" + (passed ? "全部通过" : "有失败") + "）"
-          : "机器验证：未运行";
-        return h("div", { className: "kb-verif", "data-tone": ran ? (passed ? "soft" : "error") : "warn" },
-          h(Icon, { name: ran ? (passed ? "check" : "alert") : "alert", size: 13 }),
-          h("span", null, text));
-      }
-      function verificationCommands(v) {
-        const commands = v && v.ran && Array.isArray(v.commands) ? v.commands : [];
-        if (!commands.length) return null;
-        return h("details", { className: "kb-prompt" },
-          h("summary", null, "验证命令 " + commands.length + " 条"),
-          h("div", { className: "kb-evlist" }, commands.map(function (c, k) {
-            return evidenceItem({ type: "verification", command: c && c.command, exitCode: c && c.exitCode, at: c && c.at }, k);
-          })));
-      }
-      function auditNode(entry, i) {
-        const from = statusText(entry.from);
-        const to = statusText(entry.to);
-        const flow = (from || to) ? (from || "—") + " → " + (to || "—") : "";
-        return h("li", { key: entry.id || i, className: "kb-auditrow" },
-          h("div", { className: "kb-auditmeta" },
-            h("b", null, AUDIT_ACTION[entry.action] || entry.action || "记录"),
-            h("span", null, actorText(entry.actor)),
-            h("span", null, fmtStamp(entry.ts || entry.at))),
-          flow ? h("div", { className: "kb-auditflow" }, flow) : null,
-          entry.reason ? h("p", { className: "kb-auditreason" }, entry.reason) : null);
-      }
-
-      function rowNode(key, value) {
-        return h("div", { key: key, className: "kb-row" }, h("dt", { className: "kb-rowkey" }, key), h("dd", { className: "kb-rowval" }, value));
-      }
-      function runNode(r, i) {
-        const statusLabel = r.status === "running" ? "运行中" : r.status === "failed" ? "失败" : r.status === "cancelled" ? "已取消" : "完成";
-        const tone = r.status === "running" ? "running" : r.status === "failed" ? "error" : r.status === "cancelled" ? "idle" : "done";
-        return h("div", { key: r.id || i, className: "kb-rec", "data-tone": r.status === "failed" ? "error" : null },
-          h("div", { className: "kb-rechead" },
-            h(Icon, { name: "play", size: 13 }),
-            h("b", null, "第 " + (r.attempt || i + 1) + " 轮执行"),
-            h(Badge, { tone: tone }, statusLabel),
-            r.model ? h("span", null, r.model) : null),
-          h("div", { className: "kb-recmeta" },
-            r.startedAt ? h("span", null, fmtTime(r.startedAt) + (r.endedAt ? " → " + fmtTime(r.endedAt) : "")) : null,
-            r.worktree && r.worktree.branch ? h("span", null, "工作树 " + r.worktree.branch) : null,
-            r.tokens ? h("span", null, "Token " + formatTokens(r.tokens)) : null,
-            r.sessionId ? h("span", null, "会话 ", h("code", null, shortId(r.sessionId))) : null),
-          r.sessionId ? h("div", { className: "kb-actionrow" },
-            h("button", { type: "button", className: "kb-btn--link", onClick: function () { props.onOpenSession(r.sessionId); } }, "打开会话")) : null,
-          r.summary ? h("div", { className: "kb-recbody" }, r.summary) : null,
-          r.error ? h("div", { className: "kb-recbody", "data-kind": "error" }, r.error) : null,
-          evidenceNode(r.evidence, "证据"));
-      }
-      function reviewNode(rv, i) {
-        const verdict = rv.verdict === "pass" ? { label: "通过", tone: "signoff" } : rv.verdict === "changes" ? { label: "需返工", tone: "warn" } : { label: "无结论", tone: "idle" };
-        return h("div", { key: rv.id || i, className: "kb-rec", "data-tone": rv.verdict === "changes" ? "warn" : null },
-          h("div", { className: "kb-rechead" },
-            h(Icon, { name: "search", size: 13 }),
-            h("b", null, "第 " + (rv.round || i + 1) + " 轮评审"),
-            h(Badge, { tone: verdict.tone }, verdict.label),
-            rv.reviewerModel ? h("span", null, rv.reviewerModel) : null),
-          h("div", { className: "kb-recmeta" },
-            rv.startedAt ? h("span", null, fmtTime(rv.startedAt) + (rv.endedAt ? " → " + fmtTime(rv.endedAt) : "")) : null,
-            rv.sessionId ? h("span", null, "会话 ", h("code", null, shortId(rv.sessionId))) : null),
-          verificationLine(rv.verification),
-          verificationCommands(rv.verification),
-          rv.sessionId ? h("div", { className: "kb-actionrow" },
-            h("button", { type: "button", className: "kb-btn--link", onClick: function () { props.onOpenSession(rv.sessionId); } }, "打开会话")) : null,
-          rv.mustFix && rv.mustFix.length ? h("ul", { className: "kb-mustfix" }, rv.mustFix.map(function (m, k) {
-            const loc = (m.file || "") + (m.line ? ":" + m.line : "");
-            return h("li", { key: k },
-              h("span", null,
-                loc ? h("code", null, loc) : null,
-                loc ? " " : null,
-                m.severity ? h("b", null, "[" + m.severity + "] ") : null,
-                m.issue || "",
-                m.suggestion ? h("span", { className: "kb-recbody" }, " 建议：" + m.suggestion) : null));
+      },
+        h("div", { className: "kb-cardtop" },
+          h("span", { className: "kb-stateicon" }, h(Icon, { name: view.meta.icon, size: 14 })),
+          h("h3", { className: "kb-cardtitle" }, view.title),
+          badges.length ? h("div", { className: "kb-badges" }, badges.map(function (badge, index) {
+            return h("span", { key: index, className: "kb-badge", "data-tone": badge.tone }, badge.text);
           })) : null,
-          rv.nits && rv.nits.length ? h("ul", { className: "kb-nits" }, rv.nits.map(function (n, k) { return h("li", { key: k }, n); })) : null,
-          rv.note ? h("div", { className: "kb-recbody" }, rv.note) : null,
-          evidenceNode(rv.evidence, "证据"));
-      }
-
-      const pendingNode = pending ? h("div", { className: "kb-rec", "data-tone": card.status === "needs_input" ? "warn" : null },
-        h("div", { className: "kb-rechead" }, h(Icon, { name: "chat", size: 13 }), h("b", null, pending.kind === "needs_input" ? "AI 在等你回答" : "等待批准")),
-        h("div", { className: "kb-recbody" }, pending.question || ""),
-        pending.kind === "needs_input" ? h("div", { className: "kb-field" },
-          h("textarea", { className: "kb-area", rows: 3, value: answer, placeholder: "回答会带回执行 / 评审会话继续", onChange: function (e) { setAnswer(e.target.value); } }),
-          h("div", { className: "kb-actionrow" },
-            h("button", { type: "button", className: "kb-btn kb-btn--primary kb-btn--sm", disabled: !answer.trim() || !!busy, onClick: doAnswer }, busy === "answer" ? "提交中…" : "提交回答"))) : h("div", { className: "kb-actionrow" },
-          h("button", { type: "button", className: "kb-btn kb-btn--primary kb-btn--sm", disabled: !!busy, onClick: doApprove }, busy === "approve" ? "批准中…" : "批准继续"))) : null;
-
-      const deliveryNode = delivery ? h("div", { className: "kb-deliver" },
-        h("div", { className: "kb-rechead" }, h(Icon, { name: "flag", size: 13 }), h("b", null, "交付物")),
-        h("dl", { className: "kb-rows" },
-          rowNode("方式", delivery.mode === "pr" ? "PR" : "本地变更集"),
-          delivery.branch ? rowNode("分支", h("code", null, delivery.branch)) : null,
-          delivery.baseCommit ? rowNode("基线", h("code", null, shortId(delivery.baseCommit))) : null,
-          delivery.diffStat ? rowNode("变更", h("code", null, delivery.diffStat)) : null,
-          delivery.createdAt ? rowNode("生成于", fmtTime(delivery.createdAt)) : null,
-          delivery.patchAvailable === false ? rowNode("补丁", "不可导出") : null)) : null;
-
-      const prNode = pr ? h("div", { className: "kb-deliver" },
-        h("div", { className: "kb-rechead" }, h(Icon, { name: "board", size: 13 }), h("b", null, "Pull Request")),
-        h("dl", { className: "kb-rows" },
-          rowNode("编号", "#" + (pr.number || "")),
-          pr.state ? rowNode("状态", pr.state) : null,
-          pr.checks ? rowNode("检查", pr.checks) : null,
-          pr.bound === false ? rowNode("绑定", "未绑定") : null,
-          safeUrl(pr.url) ? rowNode("链接", h("a", { href: safeUrl(pr.url), target: "_blank", rel: "noopener noreferrer", className: "kb-btn--link" }, safeUrl(pr.url))) : null)) : null;
-
-      const signoffForm = canSignoff ? h("div", { className: "kb-fieldgroup" },
-        verifyWarning ? h("div", { className: "kb-banner", style: { margin: 0 }, role: "status" },
-          h(Icon, { name: "alert", size: 15 }),
-          "本次评审未运行机器验证：签字不会被拦截，请自行确认改动。") : null,
-        h("div", { className: "kb-field" },
-          h("label", { htmlFor: "kb-sign-note" }, "签收备注"),
-          h("textarea", { id: "kb-sign-note", className: "kb-area", rows: 2, value: note, placeholder: "签字说明；打回时作为返工意见", onChange: function (e) { setNote(e.target.value); } })),
-        h("label", { className: "kb-switchrow" },
-          h("input", { type: "checkbox", checked: mergeAfter, onChange: function (e) { setMergeAfter(e.target.checked); } }),
-          h("span", null, "签字后合并到根仓库当前分支")),
-        h("p", { className: "kb-hint" }, "合并要求根仓库干净；有冲突时会返回错误，不会自动处理。")) : null;
-
-      const deliverActions = [];
-      if (canCreatePr && card.status === "awaiting_signoff") deliverActions.push(h("button", { key: "pr", type: "button", className: "kb-btn kb-btn--ghost kb-btn--sm", disabled: !!busy, onClick: doCreatePr }, busy === "create_pr" ? "创建中…" : "补建 PR"));
-      if (canPatch) deliverActions.push(h("button", { key: "patch", type: "button", className: "kb-btn kb-btn--ghost kb-btn--sm", disabled: !!busy, onClick: doPatch }, busy === "patch" ? "导出中…" : "导出补丁"));
-      if (canMerge) deliverActions.push(h("button", { key: "merge", type: "button", className: "kb-btn kb-btn--primary kb-btn--sm", disabled: !!busy, onClick: doMerge }, busy === "merge" ? "合并中…" : "一键合并"));
-      if (canCleanup) deliverActions.push(h("button", { key: "archive", type: "button", className: "kb-btn kb-btn--ghost kb-btn--sm", disabled: !!busy, onClick: doArchive }, busy === "archive" ? "归档中…" : "归档"));
-      if (canCleanup) deliverActions.push(h("button", { key: "cleanup", type: "button", className: "kb-btn kb-btn--ghost kb-btn--sm", disabled: !!busy, onClick: doCleanup }, busy === "cleanup" ? "清理中…" : "清理工作树"));
-
-      return h("aside", { ref: asideRef, tabIndex: -1, className: "kb-drawer", role: "dialog", "aria-modal": "true", "aria-label": title || "任务详情", "data-testid": "card-drawer" },
-        h("div", { className: "kb-drawerhead" },
-          h("div", { className: "kb-drawerbcrumb" },
-            h("span", { className: "kb-dot", style: { "--cdot": lane.dot } }), lane.name,
-            st.label === lane.name ? null : h("span", { style: { margin: "0 4px", opacity: .6 } }, "·"),
-            st.label === lane.name ? null : h(Badge, { tone: st.tone }, st.label)),
-          h("button", { type: "button", className: "kb-iconbtn", "aria-label": "关闭", onClick: props.onClose }, h(Icon, { name: "x", size: 17 }))),
-        h("div", { className: "kb-drawerstatus" },
-          h("div", { className: "kb-runline", "data-tone": run.tone || null, "data-testid": "drawer-runline" },
-            h("div", { className: "kb-runmain" }, h(Icon, { name: run.icon, size: 14 }), h("span", null, run.text)),
-            runMeta ? h("div", { className: "kb-runmeta" }, runMeta) : null),
-          actionError || props.startError ? h("div", { className: "kb-banner", "data-kind": "error", style: { margin: "6px 0 0" }, "aria-live": "polite" }, h(Icon, { name: "alert", size: 15 }), actionError || props.startError) : null),
-        h("div", { className: "kb-drawerbody" },
-          h("section", { className: "kb-sec" },
-            h("div", { className: "kb-seclabel" }, h("span", { className: "kb-secnum" }, "01"), h("span", { className: "kb-sectitle" }, "需求")),
-            h("textarea", { ref: titleRef, className: "kb-titleinput", rows: 1, value: card.title || "", placeholder: "一句话说清要什么", "aria-label": "任务标题", readOnly: locked, onChange: (e) => { props.onPatch({ title: e.target.value }); autosize(e.target); }, onInput: (e) => autosize(e.target) }),
-            h("div", { className: "kb-field" }, h("label", { htmlFor: "kb-task-desc" }, "背景与约束"),
-              h("textarea", { id: "kb-task-desc", className: "kb-area", rows: 3, value: card.description || "", placeholder: "涉及的目录 / 文件、参考链接、不要动什么…会原样交给 AI", readOnly: locked, onChange: (e) => props.onPatch({ description: e.target.value }) })),
-            h("div", { className: "kb-field" }, h("label", { htmlFor: "kb-task-acc" }, "验收标准（必填）"),
-              h("textarea", { id: "kb-task-acc", className: "kb-area", rows: 3, value: card.acceptance || "", placeholder: "每行一条可验证的结果，例如：npm test 全绿；新接口返回 200", readOnly: locked, onChange: (e) => props.onPatch({ acceptance: e.target.value }) }),
-              h("p", { className: "kb-hint", "data-kind": !locked && missingAcceptance ? "warn" : null }, missingAcceptance ? "还没写验收标准：AI 无法判断何时算完成，也不能开始。" : "AI 会按这里逐条自检，评审也会按它核对。")),
-            h("details", { className: "kb-prompt" },
-              h("summary", null, h(Icon, { name: "chevron", size: 13 }), locked ? "AI 收到的指令" : "AI 将收到的指令"),
-              h("pre", null, buildPromptPreview(card))),
-            locked ? h("p", { className: "kb-hint", "data-kind": "warn" }, card.status === "done" ? "任务已完成：需求与执行设置已锁定。" : canSignoff ? "评审已结束：需求与执行设置已锁定。" : "任务已启动：需求与执行设置已锁定，当前会话按启动时的简报执行。") : null),
-
-          hasRecord ? h("section", { className: "kb-sec" },
-            h("div", { className: "kb-seclabel" }, h("span", { className: "kb-secnum" }, "02"), h("span", { className: "kb-sectitle" }, "执行记录")),
-            card.error ? h("div", { className: "kb-banner", "data-kind": "error", style: { margin: 0 } }, h(Icon, { name: "alert", size: 15 }), card.error) : null,
-            rows.length ? h("dl", { className: "kb-rows" }, rows.map(function (r, i) { return h("div", { key: i, className: "kb-row" }, h("dt", { className: "kb-rowkey" }, r[0]), h("dd", { className: "kb-rowval" }, r[1])); })) : null,
-            execRuns.length ? h("div", { className: "kb-fieldgroup" }, h("p", { className: "kb-grouplabel" }, "执行会话"), execRuns.map(runNode)) : null,
-            reviews.length ? h("div", { className: "kb-fieldgroup" }, h("p", { className: "kb-grouplabel" }, "评审记录"), reviews.map(reviewNode)) : null,
-            pendingNode,
-            deliveryNode,
-            prNode,
-            signoffForm,
-            deliverActions.length ? h("div", { className: "kb-actionrow" }, deliverActions) : null) : null,
-
-          !hasRecord && deliverActions.length ? h("section", { className: "kb-sec" }, h("div", { className: "kb-actionrow" }, deliverActions)) : null,
-
-          h("section", { className: "kb-sec" },
-            h("button", { type: "button", className: "kb-sechead", "aria-expanded": showExec ? "true" : "false", onClick: () => setShowExec((v) => !v) },
-              h("span", { className: "kb-secnum" }, hasRecord ? "03" : "02"), h("span", { className: "kb-sectitle" }, "执行设置"), h("span", { className: "kb-secsum" }, execSummary), h(Icon, { name: "chevron", size: 14 })),
-            showExec ? h("div", { className: "kb-secbody" },
-              h("div", { className: "kb-fieldgroup" },
-                h("div", { className: "kb-metagrid" },
-                  h("div", { className: "kb-field" },
-                    h("label", { htmlFor: "kb-task-executor" }, "执行模型"),
-                    h("select", { id: "kb-task-executor", className: "kb-select2", value: card.executor || "", title: card.executor ? modelName(card.executor) : "宿主默认模型", disabled: locked, onChange: (e) => props.onPatch({ executor: e.target.value }) }, modelOptions(card.executor, "宿主默认模型"))),
-                  h("div", { className: "kb-field" },
-                    h("label", { htmlFor: "kb-task-reviewer" }, "评审模型"),
-                    h("select", { id: "kb-task-reviewer", className: "kb-select2", value: card.reviewer || "", title: card.reviewer ? modelName(card.reviewer) : "同执行模型", disabled: locked, onChange: (e) => props.onPatch({ reviewer: e.target.value }) }, modelOptions(card.reviewer, "同执行模型")))),
-                modelCatalogHint()),
-              h("div", { className: "kb-fieldgroup" },
-                h("label", { className: "kb-switchrow" },
-                  h("input", { type: "checkbox", checked: !customBudget, disabled: locked, onChange: (e) => props.onPatch({ budget: e.target.checked ? {} : Object.assign({}, DEFAULT_BUDGET) }) }),
-                  h("span", null, "使用默认预算（" + DEFAULT_BUDGET.maxRounds + " 轮 / " + formatTokens(DEFAULT_BUDGET.maxTokens) + " token / " + DEFAULT_BUDGET.maxMinutes + " 分钟）")),
-                customBudget ? h("div", { className: "kb-triple" },
-                  h("div", { className: "kb-field" }, h("label", null, "最大轮数"), h("input", { className: "kb-input", type: "number", min: 1, readOnly: locked, value: budget.maxRounds == null ? "" : budget.maxRounds, placeholder: String(DEFAULT_BUDGET.maxRounds), onChange: (e) => props.onPatch({ budget: Object.assign({}, budget, { maxRounds: e.target.value ? Number(e.target.value) : null }) }) })),
-                  h("div", { className: "kb-field" }, h("label", null, "最大 token"), h("input", { className: "kb-input", type: "number", min: 0, readOnly: locked, value: budget.maxTokens == null ? "" : budget.maxTokens, placeholder: String(DEFAULT_BUDGET.maxTokens), onChange: (e) => props.onPatch({ budget: Object.assign({}, budget, { maxTokens: e.target.value ? Number(e.target.value) : null }) }) })),
-                  h("div", { className: "kb-field" }, h("label", null, "最长分钟"), h("input", { className: "kb-input", type: "number", min: 0, readOnly: locked, value: budget.maxMinutes == null ? "" : budget.maxMinutes, placeholder: String(DEFAULT_BUDGET.maxMinutes), onChange: (e) => props.onPatch({ budget: Object.assign({}, budget, { maxMinutes: e.target.value ? Number(e.target.value) : null }) }) }))) : null),
-              h("div", { className: "kb-fieldgroup" },
-                h("label", null, "基线"),
-                h("div", { className: "kb-metagrid" },
-                  h("div", { className: "kb-field" }, h("select", { className: "kb-select2", value: base.mode || "head", disabled: locked, onChange: (e) => props.onPatch({ base: Object.assign({}, base, { mode: e.target.value }) }) },
-                    h("option", { value: "head" }, "当前 HEAD"), h("option", { value: "branch" }, "指定分支"))),
-                  base.mode === "branch" ? h("div", { className: "kb-field" }, h("input", { className: "kb-input", value: base.branch || "", placeholder: "分支名，如 main", "aria-label": "基线分支名", readOnly: locked, onChange: (e) => props.onPatch({ base: Object.assign({}, base, { branch: e.target.value }) }) })) : null),
-                gitInfo && !gitInfo.isRepo ? h("p", { className: "kb-hint", "data-kind": "warn" }, "工作区不是 Git 仓库：先 git init 并提交一次，才能执行。")
-                  : gitInfo && !gitInfo.hasHead ? h("p", { className: "kb-hint", "data-kind": "warn" }, "仓库还没有提交（HEAD 不存在），无法创建工作树。")
-                  : gitInfo && gitInfo.isLinkedWorktree ? h("p", { className: "kb-hint", "data-kind": "warn" }, "当前是 linked worktree 副本，不能在这里执行任务。")
-                  : gitInfo && gitInfo.dirty ? h("div", { className: "kb-fieldgroup" },
-                    h("p", { className: "kb-hint", "data-kind": "warn" }, "工作区有 " + (gitInfo.dirtyCount || "若干") + " 项未提交改动；工作树只包含已提交的内容。"),
-                    h("label", { className: "kb-switchrow" },
-                      h("input", { type: "checkbox", checked: !!base.ignoreDirty, disabled: locked, onChange: (e) => props.onPatch({ base: Object.assign({}, base, { ignoreDirty: e.target.checked }) }) }),
-                      h("span", null, "以当前 HEAD 为基线，忽略这些未提交改动")))
-                  : h("p", { className: "kb-hint" }, gitInfo ? "工作区干净，基线 = 当前 HEAD。" : "未检测到 Git 状态；开始执行时还会再校验一次。")),
-              h("p", { className: "kb-hint" }, "模型与轮数由 Host 在启动后读取；模型留空时执行使用宿主默认模型" + defaultModelHint + "，评审同执行模型。PR 与推送行为走看板默认设置（v1 没有设置页）。")) : null),
-
-          h("section", { className: "kb-sec" },
-            h("button", { type: "button", className: "kb-sechead", "aria-expanded": showMeta ? "true" : "false", onClick: () => setShowMeta((v) => !v) },
-              h("span", { className: "kb-secnum" }, hasRecord ? "04" : "03"), h("span", { className: "kb-sectitle" }, "归类"), h("span", { className: "kb-secsum" }, metaSummary), h(Icon, { name: "chevron", size: 14 })),
-            showMeta ? h("div", { className: "kb-secbody" },
-              h("div", { className: "kb-metagrid" },
-                h("div", { className: "kb-field" }, h("label", null, "优先级"), h("select", { className: "kb-select2", value: card.priority || "none", onChange: (e) => props.onPatch({ priority: e.target.value }) }, priorityOptions)),
-                h("div", { className: "kb-field" }, h("label", null, "截止日期"), h("input", { className: "kb-input", type: "date", value: card.due || "", onChange: (e) => props.onPatch({ due: e.target.value || null }) }))),
-              h("div", { className: "kb-field" }, h("label", null, "标签"),
-                h("div", { className: "kb-labels" }, LABELS.map(function (l) {
-                  const on = (card.labels || []).indexOf(l.id) >= 0;
-                  return h("button", { key: l.id, type: "button", className: "kb-labeltoggle", "aria-pressed": on ? "true" : "false", style: { "--c": "var(--t-" + l.tone + ")" }, onClick: () => toggleLabel(l.id) }, h("span", { className: "kb-chipdot" }), l.name);
-                })))) : null),
-
-          h("section", { className: "kb-sec" },
-            h("details", { className: "kb-audit", onToggle: onAuditToggle },
-              h("summary", null,
-                h("span", { className: "kb-secnum" }, auditNum),
-                h("span", { className: "kb-sectitle" }, "审计记录"),
-                h("span", { className: "kb-secsum" }, auditSummary),
-                h(Icon, { name: "chevron", size: 14 })),
-              auditStatus === "loading" ? h("p", { className: "kb-hint" }, "正在加载审计记录…")
-                : auditStatus === "error" ? h("div", { className: "kb-fieldgroup" },
-                  h("p", { className: "kb-hint", "data-kind": "warn" }, auditError || "审计记录加载失败。"),
-                  h("div", { className: "kb-actionrow" }, h("button", { type: "button", className: "kb-btn kb-btn--ghost kb-btn--sm", onClick: loadAudit }, "重试")))
-                : auditEntries.length ? h("ol", { className: "kb-auditlist" }, auditEntries.map(auditNode))
-                : h("p", { className: "kb-hint" }, "还没有审计记录。")))
+          card.pinned ? h("span", { className: "kb-badge", "data-tone": "arch", title: "已置顶" }, h(Icon, { name: "pin", size: 10 })) : null
         ),
-        h("div", { className: "kb-drawerfoot" },
-          confirmDel
-            ? h("div", { className: "kb-footacts" },
-              h("span", { className: "kb-confirm" }, "删除「" + delName + "」后不可恢复"),
-              h("button", { type: "button", className: "kb-btn kb-btn--ghost kb-btn--sm", onClick: () => setConfirmDel(false) }, "取消"),
-              h("button", { type: "button", className: "kb-btn kb-btn--danger kb-btn--sm", onClick: confirmDelete }, "确认删除"))
-            : [
-              h("span", { key: "save", className: "kb-save", "data-state": props.saveState || "ok" },
-                h(Icon, { name: saveIcon, size: 13 }), sign ? "已签字" : saveLabel),
-              h("button", { key: "del", type: "button", className: "kb-danger", disabled: !!busy, onClick: askDelete }, h(Icon, { name: "trash", size: 14 }), "删除"),
-              h("div", { key: "acts", className: "kb-footacts" },
-                live ? h("button", { type: "button", className: "kb-btn kb-btn--ghost kb-btn--sm", disabled: !!busy, onClick: doCancel }, busy === "cancel" ? "取消中…" : "取消执行") : null,
-                canSignoff ? h("button", { type: "button", className: "kb-btn kb-btn--ghost kb-btn--sm", disabled: !!busy, onClick: doReject }, busy === "reject" ? "打回中…" : "打回返工") : null,
-                canSignoff ? h("button", { type: "button", className: "kb-btn " + (card.status === "awaiting_signoff" ? "kb-btn--primary" : "kb-btn--ghost") + " kb-btn--sm", disabled: !!busy, onClick: doSignoff }, busy === "signoff" ? "签字中…" : "通过签字") : null,
-                canCreatePr && card.status !== "awaiting_signoff" ? h("button", { type: "button", className: "kb-btn kb-btn--primary kb-btn--sm", disabled: !!busy, onClick: doCreatePr }, busy === "create_pr" ? "创建中…" : "补建 PR") : null,
-                startable ? h("button", { type: "button", className: "kb-btn kb-btn--primary kb-btn--sm", disabled: !canRun || !!busy, "aria-disabled": canRun ? null : "true", title: startHint, onClick: retryMode ? doRetry : () => runAsync("start", function () { return props.onStart(); }) }, busy === "retry" ? "重试中…" : busy === "start" ? "启动中…" : retryMode ? "重试" : "开始执行") : null)
-            ]
+        h("div", { className: "kb-status" },
+          h("span", { className: "kb-statustext" }, view.status.label),
+          view.status.time ? h("span", { className: "kb-statustime" }, view.status.time) : null
+        ),
+        h("p", { className: "kb-evidence", "data-kind": view.evidence.kind },
+          view.evidence.kind === "question" ? h("span", { className: "kb-qmark", "aria-hidden": "true" }, "“") : null,
+          view.evidence.text
+        ),
+        h("div", { className: "kb-foot" },
+          view.foot.map(function (part, index) {
+            return h("span", { key: index, title: part.title || null },
+              index ? h("i", null, " · ") : null,
+              part.text
+            );
+          })
         )
       );
     }
 
-    function NavIcon(props) {
-      const s = props.size || 16;
-      return h("svg", { width: s, height: s, viewBox: "0 0 16 16", "aria-hidden": "true", focusable: "false", style: { display: "block" } },
-        h("rect", { x: 1.6, y: 2.4, width: 3.4, height: 9.2, rx: 1.2, fill: "currentColor", opacity: 0.55 }),
-        h("rect", { x: 6.3, y: 2.4, width: 3.4, height: 11.2, rx: 1.2, fill: "currentColor" }),
-        h("rect", { x: 11.0, y: 2.4, width: 3.4, height: 6.2, rx: 1.2, fill: "currentColor", opacity: 0.8 }));
+    function EmptyLane(props) {
+      return h("div", { className: "kb-empty" },
+        h(Icon, { name: props.icon || "inbox", size: 22 }),
+        h("div", { className: "kb-emptytitle" }, props.title),
+        props.sub ? h("div", { className: "kb-emptysub" }, props.sub) : null
+      );
     }
+
+    function Lane(props) {
+      const lane = props.lane;
+      const sections = props.sections;
+      const count = props.count;
+      const breakdown = props.breakdown;
+      const more = props.more || 0;
+      const isSettled = lane.id === "settled";
+      return h("section", { className: "kb-lane", "data-lane": lane.id, "aria-label": lane.title },
+        h("div", { className: "kb-lanehead" },
+          h("div", { className: "kb-lanetitlerow" },
+            h("span", { className: "kb-lanedot" }),
+            h("h2", { className: "kb-lanetitle" }, lane.title),
+            h("span", { className: "kb-laneactor" }, lane.actor),
+            h("span", { className: "kb-count" }, String(count))
+          ),
+          breakdown ? h("p", { className: "kb-brk" }, breakdown) : null
+        ),
+        h("div", { className: "kb-lanebody" },
+          count === 0 && !(isSettled && props.archivedCount > 0)
+            ? h(EmptyLane, {
+              icon: lane.id === "needs" ? "check" : (lane.id === "working" ? "clock" : "archive"),
+              title: lane.id === "needs" ? "没有需要你处理的事" : (lane.id === "working" ? "没有正在进行的会话" : "还没有已收尾的会话"),
+              sub: lane.id === "needs" ? "所有会话都在自己跑，或者已经收尾。" : (lane.id === "working" ? "新建或继续一个会话，它会自动出现在这里。" : "完成一轮对话后，回执会留在这里。"),
+            })
+            : null,
+          sections.map(function (section) {
+            if (!section.items.length) return null;
+            return h("div", { className: "kb-section", key: section.id },
+              h("div", { className: "kb-sechead" }, h("span", null, section.title), h("span", null, String(section.items.length))),
+              section.items.map(function (item) {
+                return h(Card, { key: item.card.id, item: item, openedAt: props.openedAt, onOpen: props.onOpen });
+              })
+            );
+          }),
+          more > 0 ? h("button", {
+            type: "button",
+            className: "kb-more",
+            onClick: props.onShowMore,
+          }, "显示其余 " + more + " 个") : null,
+          isSettled && props.archivedCount > 0
+            ? h("div", { className: "kb-section" },
+              h("button", {
+                type: "button",
+                className: "kb-archrow",
+                "aria-expanded": props.archivedOpen ? "true" : "false",
+                onClick: props.onToggleArchived,
+              },
+                h(Icon, { name: "archive", size: 13 }),
+                h("span", null, "已归档 " + props.archivedCount),
+                h("span", null, h(Icon, { name: "chevron", size: 13 }))
+              ),
+              props.archivedOpen ? h("div", { className: "kb-archlist" },
+                props.archivedLoading ? h("p", { className: "kb-hint" }, "正在加载归档…")
+                  : props.archivedError ? h("p", { className: "kb-hint" }, props.archivedError)
+                    : props.archivedItems.map(function (item) {
+                      return h(Card, { key: item.card.id, item: item, openedAt: props.openedAt, onOpen: props.onOpen });
+                    })
+              ) : null,
+              h("p", { className: "kb-archhint" }, "归档会话只读展示；需在 DSH 侧栏恢复后才能打开。")
+            )
+            : null
+        ),
+        h("div", { className: "kb-lanefoot" },
+          h("p", { className: "kb-hint" },
+            lane.id === "needs" ? "点击卡片进入会话处理；看板不写入任何状态。"
+              : lane.id === "working" ? "卡片会自动跟随会话状态移动。"
+                : "收尾不等于验收；只有目标完成才标「目标完成」。")
+        )
+      );
+    }
+
+    function currentBlankId(list) {
+      if (!list || !list.byId || !Array.isArray(list.ids)) return null;
+      let fallback = null;
+      let blankCount = 0;
+      for (const id of list.ids) {
+        const row = list.byId[id];
+        if (!row || row.blank !== true) continue;
+        blankCount += 1;
+        if (row.retainedBy && Number(row.retainedBy.mainView) > 0) return String(id);
+        if (!fallback) fallback = String(id);
+      }
+      return blankCount === 1 ? fallback : null;
+    }
+
+    function syntheticBlank(id) {
+      const now = Date.now();
+      return {
+        id: String(id),
+        title: "新会话",
+        titleSource: "provisional",
+        titleUpdatedAt: null,
+        titleStale: false,
+        provisional: true,
+        state: "blank",
+        since: now,
+        updatedAt: now,
+        lastPromptAt: null,
+        createdAt: now,
+        blank: true,
+        archived: false,
+        pinned: false,
+        cwd: null,
+        workspace: null,
+        fork: null,
+        activity: { running: false, subagents: 0, jobs: 0, scheduled: 0, labels: [], currentStep: "", todoDone: 0, todoTotal: 0, runningSince: null },
+        outcome: null,
+        goal: null,
+        tokens: null,
+        turns: null,
+        formatStatus: null,
+        compact: false,
+        canOpen: true,
+      };
+    }
+
+    function syntheticRunning(row) {
+      const now = Date.now();
+      return {
+        id: String(row.id),
+        title: row.title || row.displayTitle || "新会话",
+        titleSource: "provisional",
+        titleUpdatedAt: null,
+        titleStale: false,
+        provisional: true,
+        state: "running",
+        since: row.updatedAt || now,
+        updatedAt: row.updatedAt || now,
+        lastPromptAt: row.updatedAt || now,
+        createdAt: row.updatedAt || now,
+        blank: false,
+        archived: false,
+        pinned: false,
+        cwd: row.cwd || null,
+        workspace: null,
+        fork: null,
+        activity: { running: true, subagents: 0, jobs: 0, scheduled: 0, labels: [], currentStep: "正在生成回复…", todoDone: 0, todoTotal: 0, runningSince: row.updatedAt || now },
+        outcome: null,
+        goal: null,
+        tokens: null,
+        turns: null,
+        formatStatus: null,
+        compact: false,
+        canOpen: true,
+      };
+    }
+
+    function BoardView(props) {
+      const [board, setBoard] = useState(null);
+      const [fatal, setFatal] = useState("");
+      const [error, setError] = useState("");
+      const [refreshing, setRefreshing] = useState(false);
+      const [live, setLive] = useState(false);
+      const [query, setQuery] = useState("");
+      const [workspace, setWorkspace] = useState("all");
+      const [days, setDays] = useState(7);
+      const [limits, setLimits] = useState({ needs: 80, working: 80, settled: 80 });
+      const [archivedOpen, setArchivedOpen] = useState(false);
+      const [archivedLoading, setArchivedLoading] = useState(false);
+      const [archivedError, setArchivedError] = useState("");
+      const [archivedItems, setArchivedItems] = useState([]);
+      const [notice, setNotice] = useState(null);
+      const [now, setNow] = useState(Date.now());
+      const [lastSeen, setLastSeen] = useState(function () {
+        try { return JSON.parse(localStorage.getItem("dsh.task-board.seen.v1") || "{}") || {}; } catch (e) { return {}; }
+      });
+      const openedAt = useRef(Date.now()).current;
+      const searchRef = useRef(null);
+      const noticeTimer = useRef(null);
+      const boardRef = useRef(null);
+
+      const statuses = props.statuses || (typeof Map === "function" ? new Map() : {});
+      const sessionsList = props.sessionsList;
+
+      const readCards = useCallback(async function (force) {
+        setRefreshing(true);
+        try {
+          const data = await api("/cards?days=" + days + (force ? "&refresh=1" : ""));
+          setBoard(data);
+          setFatal("");
+          setError("");
+        } catch (e) {
+          const message = String((e && e.message) || e);
+          if (boardRef.current) setError(message);
+          else setFatal(message);
+        } finally {
+          setRefreshing(false);
+        }
+      }, [days]);
+
+      useEffect(function () { boardRef.current = board; }, [board]);
+      useEffect(function () { setLimits({ needs: 80, working: 80, settled: 80 }); }, [days]);
+      useEffect(function () { readCards(false); }, [readCards]);
+      useEffect(function () {
+        const timer = setInterval(function () { readCards(false); }, 10000);
+        return function () { clearInterval(timer); };
+      }, [readCards]);
+      useEffect(function () {
+        const timer = setInterval(function () { setNow(Date.now()); }, 30000);
+        return function () { clearInterval(timer); };
+      }, []);
+      useEffect(function () {
+        if (!notice) return;
+        clearTimeout(noticeTimer.current);
+        noticeTimer.current = setTimeout(function () { setNotice(null); }, 4200);
+        return function () { clearTimeout(noticeTimer.current); };
+      }, [notice]);
+      useEffect(function () {
+        try { localStorage.setItem("dsh.task-board.seen.v1", JSON.stringify(lastSeen)); } catch (e) { }
+      }, [lastSeen]);
+      useEffect(function () {
+        function onKey(event) {
+          const target = event.target;
+          const typing = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable);
+          if (event.key === "/" && !typing) { event.preventDefault(); if (searchRef.current) searchRef.current.focus(); }
+          if (event.key === "Escape" && query) { setQuery(""); if (searchRef.current) searchRef.current.blur(); }
+        }
+        window.addEventListener("keydown", onKey);
+        return function () { window.removeEventListener("keydown", onKey); };
+      }, [query]);
+
+      useEffect(function () {
+        let source = null;
+        try {
+          source = new EventSource("/task-board-api/events?days=" + days);
+          source.addEventListener("cards", function (event) {
+            try {
+              const patch = JSON.parse(event.data);
+              setLive(true);
+              setBoard(function (previous) {
+                if (!previous) return previous;
+                const map = new Map(previous.cards.map(function (card) { return [card.id, card]; }));
+                for (const card of patch.upserts || []) map.set(card.id, card);
+                for (const id of patch.removes || []) map.delete(id);
+                return {
+                  ...previous,
+                  revision: patch.revision,
+                  generatedAt: patch.generatedAt || previous.generatedAt,
+                  cards: Array.from(map.values()),
+                  archivedCount: patch.archivedCount === undefined ? previous.archivedCount : patch.archivedCount,
+                  titleFollow: patch.titleFollow === undefined ? previous.titleFollow : patch.titleFollow,
+                };
+              });
+            } catch (e) { }
+          });
+          source.onopen = function () { setLive(true); };
+          source.onerror = function () { setLive(false); };
+        } catch (e) {
+          source = null;
+        }
+        return function () { if (source) source.close(); };
+      }, [days]);
+
+      const openCard = useCallback(function (card) {
+        if (card.archived) {
+          setNotice({ kind: "warn", text: "已归档会话需在 DSH 侧栏恢复后才能打开。" });
+          return;
+        }
+        setLastSeen(function (previous) {
+          const next = Object.assign({}, previous);
+          next[card.id] = Date.now();
+          return next;
+        });
+        const nav = service("uiWorkspace");
+        if (nav && typeof nav.openSession === "function") {
+          try { nav.openSession(card.id); return; } catch (e) { }
+        }
+        setNotice({ kind: "warn", text: "当前宿主不支持从看板打开会话。" });
+      }, []);
+
+      const toggleArchived = useCallback(async function () {
+        if (archivedOpen) { setArchivedOpen(false); return; }
+        setArchivedOpen(true);
+        if (archivedItems.length) return;
+        setArchivedLoading(true);
+        setArchivedError("");
+        try {
+          const data = await api("/archived");
+          setArchivedItems(Array.isArray(data.cards) ? data.cards : []);
+        } catch (e) {
+          setArchivedError("归档加载失败：" + String((e && e.message) || e));
+        } finally {
+          setArchivedLoading(false);
+        }
+      }, [archivedOpen, archivedItems.length]);
+
+      const allCards = board && Array.isArray(board.cards) ? board.cards : [];
+      let currentBlank = currentBlankId(sessionsList);
+      if (!currentBlank) {
+        const blankCards = allCards.filter(function (card) { return card.blank; });
+        if (blankCards.length === 1) currentBlank = blankCards[0].id;
+      }
+      const rows = (sessionsList && sessionsList.byId) || {};
+      const seenIds = new Set(allCards.map(function (card) { return card.id; }));
+      const cards = allCards.slice();
+      for (const id of (sessionsList && sessionsList.ids) || []) {
+        if (seenIds.has(String(id))) continue;
+        const row = rows[id];
+        if (!row || row.origin === "subagent") continue;
+        if (row.blank && currentBlank === String(id)) cards.push(syntheticBlank(id));
+        else if (row.running) cards.push(syntheticRunning(row));
+      }
+      if (currentBlank && !cards.some(function (card) { return card.id === currentBlank; })) {
+        cards.push(syntheticBlank(currentBlank));
+      }
+
+      const decorated = cards.filter(function (card) {
+        if (card.archived) return false;
+        if (card.blank && card.id !== currentBlank) return false;
+        return true;
+      }).map(function (card) {
+        const status = statuses && typeof statuses.get === "function" ? statuses.get(card.id) : (statuses && statuses[card.id]);
+        const pending = pendingInfo(status && status.pendingInteraction);
+        let state = card.state;
+        if (pending) state = pending.state;
+        else if (status && status.running && !card.blank) state = "running";
+        const effective = Object.assign({}, card, { state: state });
+        const lane = laneOf(effective, pending);
+        const view = {
+          title: card.title || "未命名会话",
+          status: statusText(effective, pending, lane, now),
+          evidence: evidenceOf(effective, pending, now),
+          meta: stateMeta(state),
+        };
+        const newResult = lane === "settled"
+          && (state === "completed" || state === "goal_complete")
+          && card.outcome
+          && card.outcome.endedAt
+          && card.outcome.endedAt > (lastSeen[card.id] || openedAt);
+        view.foot = footOf(effective, lane, now);
+        return { card: effective, source: card, pending: pending, lane: lane, view: view, newResult: newResult, state: state };
+      });
+
+      const normalizedQuery = query.trim().toLowerCase();
+      const workspaceOptions = [];
+      const seenWorkspace = new Set();
+      for (const item of decorated) {
+        const key = item.card.workspace && item.card.workspace.id ? item.card.workspace.id : "ungrouped";
+        const label = item.card.workspace && item.card.workspace.title ? item.card.workspace.title : "未分组";
+        if (seenWorkspace.has(key)) continue;
+        seenWorkspace.add(key);
+        workspaceOptions.push({ key: key, label: label });
+      }
+      workspaceOptions.sort(function (a, b) { return a.label.localeCompare(b.label, "zh-CN"); });
+
+      const filtered = decorated.filter(function (item) {
+        if (workspace !== "all") {
+          const key = item.card.workspace && item.card.workspace.id ? item.card.workspace.id : "ungrouped";
+          if (key !== workspace) return false;
+        }
+        if (!normalizedQuery) return true;
+        const hay = [item.view.title, item.view.evidence.text, item.view.status.label, item.card.workspace && item.card.workspace.title]
+          .filter(Boolean).join(" ").toLowerCase();
+        return hay.indexOf(normalizedQuery) >= 0;
+      });
+
+      const byLane = { needs: [], working: [], settled: [] };
+      for (const item of filtered) {
+        if (!byLane[item.lane]) byLane[item.lane] = [];
+        byLane[item.lane].push(item);
+      }
+
+      function severity(item) {
+        if (item.pending) {
+          if (item.pending.kind === "approval") return 0;
+          if (item.pending.kind === "plan_review") return 1;
+          return 2;
+        }
+        if (FAILURE_STATES[item.state]) return 3;
+        if (item.state === "blank") return 4;
+        return 2;
+      }
+      byLane.needs.sort(function (a, b) {
+        const bySeverity = severity(a) - severity(b);
+        if (bySeverity) return bySeverity;
+        return (a.card.since || a.card.updatedAt || 0) - (b.card.since || b.card.updatedAt || 0);
+      });
+      byLane.working.sort(function (a, b) {
+        const aWait = a.state === "scheduled" || a.state === "goal_waiting" ? 1 : 0;
+        const bWait = b.state === "scheduled" || b.state === "goal_waiting" ? 1 : 0;
+        if (aWait !== bWait) return aWait - bWait;
+        if (!aWait) return (a.card.activity.runningSince || 0) - (b.card.activity.runningSince || 0);
+        return (a.card.updatedAt || 0) - (b.card.updatedAt || 0);
+      });
+      byLane.settled.sort(function (a, b) {
+        if (a.newResult !== b.newResult) return a.newResult ? -1 : 1;
+        return (b.card.since || b.card.updatedAt || 0) - (a.card.since || a.card.updatedAt || 0);
+      });
+
+      function dayKey(ms) {
+        if (!ms) return "更早";
+        const date = new Date(ms);
+        const today = new Date(now);
+        const start = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+        if (ms >= start) return "今天";
+        if (ms >= start - 86400000) return "昨天";
+        return "更早";
+      }
+
+      function sectionsFor(lane, items) {
+        if (lane === "needs") {
+          const decide = items.filter(function (item) { return !FAILURE_STATES[item.state] && item.state !== "blank"; });
+          const exception = items.filter(function (item) { return FAILURE_STATES[item.state]; });
+          const draft = items.filter(function (item) { return item.state === "blank"; });
+          return [
+            { id: "decide", title: "待决定", items: decide },
+            { id: "exception", title: "异常", items: exception },
+            { id: "draft", title: "草稿", items: draft },
+          ];
+        }
+        if (lane === "working") {
+          const run = items.filter(function (item) { return item.state !== "scheduled" && item.state !== "goal_waiting"; });
+          const wait = items.filter(function (item) { return item.state === "scheduled" || item.state === "goal_waiting"; });
+          return [
+            { id: "run", title: "执行", items: run },
+            { id: "wait", title: "等待", items: wait },
+          ];
+        }
+        const groups = new Map();
+        for (const item of items) {
+          const key = dayKey(item.card.since || item.card.updatedAt);
+          const list = groups.get(key) || [];
+          list.push(item);
+          groups.set(key, list);
+        }
+        return ["今天", "昨天", "更早"].map(function (key) {
+          return { id: key, title: key, items: groups.get(key) || [] };
+        });
+      }
+
+      const counts = { needs: byLane.needs.length, working: byLane.working.length, settled: byLane.settled.length };
+      const newCount = decorated.filter(function (item) { return item.newResult; }).length;
+      const workspaceLabel = workspace === "all" ? "全部工作区" : (workspaceOptions.find(function (option) { return option.key === workspace; }) || {}).label || "工作区";
+      const total = counts.needs + counts.working + counts.settled;
+      const titleHint = board && board.titleFollow === false && total >= 3;
+
+      return h("div", { className: "kb", "data-testid": "task-board" },
+        h("header", { className: "kb-head" },
+          h("div", { className: "kb-headrow" },
+            h("div", { className: "kb-brand" },
+              h("p", { className: "kb-kicker" }, "DeepSeek Harness · Sessions"),
+              h("h1", { className: "kb-title" }, "任务看板"),
+              h("p", { className: "kb-sub" },
+                "每个 DSH 会话自动成为一张卡片",
+                h("span", { className: "kb-readonly" }, "只读"),
+                h("span", { className: "kb-livestate", "data-live": live ? "true" : "false" }, h("i"), live ? "实时" : "轮询")
+              )
+            ),
+            h("div", { className: "kb-headtools" },
+              h("label", { className: "kb-search" },
+                h(Icon, { name: "search", size: 14 }),
+                h("input", {
+                  ref: searchRef,
+                  type: "search",
+                  value: query,
+                  placeholder: "搜索标题 / 问题 / 结果",
+                  "aria-label": "搜索会话",
+                  onChange: function (event) { setQuery(event.target.value); },
+                })
+              ),
+              h("select", {
+                className: "kb-select",
+                value: String(days),
+                "aria-label": "按时间范围筛选",
+                onChange: function (event) { setDays(Number(event.target.value) || 0); },
+              },
+                h("option", { value: "7" }, "最近 7 天"),
+                h("option", { value: "30" }, "最近 30 天"),
+                h("option", { value: "90" }, "最近 90 天"),
+                h("option", { value: "0" }, "全部时间")
+              ),
+              h("select", {
+                className: "kb-select",
+                value: workspace,
+                "aria-label": "按工作区筛选",
+                onChange: function (event) { setWorkspace(event.target.value); },
+              },
+                h("option", { value: "all" }, "全部工作区"),
+                workspaceOptions.map(function (option) { return h("option", { key: option.key, value: option.key }, option.label); })
+              ),
+              h("button", {
+                type: "button",
+                className: "kb-iconbtn",
+                title: "刷新",
+                "aria-label": "刷新",
+                "data-busy": refreshing ? "true" : "false",
+                disabled: refreshing,
+                onClick: function () { readCards(true); },
+              }, h(Icon, { name: "refresh", size: 14 }))
+            )
+          ),
+          h("div", { className: "kb-stats" },
+            h("span", { className: "kb-stat", "data-tone": "needs" }, h("b", null, String(counts.needs)), h("span", null, "需要你")),
+            h("span", { className: "kb-statsep" }),
+            h("span", { className: "kb-stat", "data-tone": "working" }, h("b", null, String(counts.working)), h("span", null, "进行中")),
+            h("span", { className: "kb-statsep" }),
+            h("span", { className: "kb-stat", "data-tone": "settled" }, h("b", null, String(counts.settled)), h("span", null, "已收尾")),
+            newCount ? h("span", { className: "kb-stat", "data-tone": "settled" }, h("b", null, String(newCount)), h("span", null, "新结果")) : null,
+            h("span", { className: "kb-statsep" }),
+            h("span", { className: "kb-stat" }, h("span", null, workspaceLabel))
+          )
+        ),
+        error ? h("div", { className: "kb-banner", "data-kind": "error", role: "status" },
+          h(Icon, { name: "alert", size: 14 }),
+          h("span", null, "更新失败：" + error + "。显示上次数据。"),
+          h("button", { type: "button", onClick: function () { readCards(true); } }, "重试")
+        ) : null,
+        fatal
+          ? h("div", { className: "kb-fatal" },
+            h("div", { className: "kb-fatalbox" },
+              h("h2", null, "无法读取会话"),
+              h("p", null, fatal),
+              h("button", { type: "button", onClick: function () { readCards(true); } }, "重试")
+            )
+          )
+          : !board
+            ? h("div", { className: "kb-lanes" },
+              LANES.map(function (lane) {
+                return h("section", { className: "kb-lane", "data-lane": lane.id, key: lane.id },
+                  h("div", { className: "kb-lanehead" },
+                    h("div", { className: "kb-lanetitlerow" },
+                      h("span", { className: "kb-lanedot" }),
+                      h("h2", { className: "kb-lanetitle" }, lane.title),
+                      h("span", { className: "kb-laneactor" }, lane.actor)
+                    )
+                  ),
+                  h("div", { className: "kb-lanebody" },
+                    h("div", { className: "kb-skel" }),
+                    h("div", { className: "kb-skel" }),
+                    h("div", { className: "kb-skel" })
+                  )
+                );
+              })
+            )
+            : h("div", { className: "kb-lanes" },
+              LANES.map(function (lane) {
+                const items = byLane[lane.id] || [];
+                const limit = limits[lane.id] || 80;
+                const visibleItems = items.slice(0, limit);
+                const sections = sectionsFor(lane.id, visibleItems);
+                const newInLane = items.filter(function (item) { return item.newResult; }).length;
+                let breakdown = "";
+                if (lane.id === "needs") {
+                  const decide = sections[0].items.length;
+                  const exception = sections[1].items.length;
+                  const draft = sections[2].items.length;
+                  breakdown = [decide ? decide + " 待决定" : "", exception ? exception + " 异常" : "", draft ? draft + " 草稿" : ""].filter(Boolean).join(" · ");
+                } else if (lane.id === "working") {
+                  const run = sections[0].items.length;
+                  const wait = sections[1].items.length;
+                  breakdown = [run ? run + " 执行" : "", wait ? wait + " 等待" : ""].filter(Boolean).join(" · ");
+                } else {
+                  const todayCount = items.filter(function (item) {
+                    return dayKey(item.card.since || item.card.updatedAt) === "今天";
+                  }).length;
+                  breakdown = newInLane
+                    ? newInLane + " 新结果 · " + (items.length - newInLane) + " 已收尾"
+                    : todayCount
+                      ? todayCount + " 今天 · " + (items.length - todayCount) + " 更早"
+                      : items.length + " 已收尾";
+                }
+                return h(Lane, {
+                  key: lane.id,
+                  lane: lane,
+                  count: items.length,
+                  breakdown: breakdown,
+                  sections: sections,
+                  openedAt: openedAt,
+                  onOpen: openCard,
+                  more: Math.max(0, items.length - visibleItems.length),
+                  onShowMore: function () {
+                    setLimits(function (previous) {
+                      return Object.assign({}, previous, { [lane.id]: (previous[lane.id] || 80) + 80 });
+                    });
+                  },
+                  archivedCount: lane.id === "settled" ? (board.archivedCount || 0) : 0,
+                  archivedOpen: archivedOpen,
+                  archivedLoading: archivedLoading,
+                  archivedError: archivedError,
+                  archivedItems: archivedItems.map(function (card) {
+                    const pending = null;
+                    const effective = card;
+                    const view = {
+                      title: card.title || "未命名会话",
+                      status: { label: "已归档", time: card.updatedAt ? relative(card.updatedAt, now) : "" },
+                      evidence: { kind: "muted", text: "需在 DSH 侧栏恢复后才能打开。" },
+                      meta: stateMeta("archived"),
+                      foot: card.workspace && card.workspace.title ? [{ text: card.workspace.title }] : [],
+                    };
+                    return { card: effective, pending: pending, lane: "settled", view: view, newResult: false, state: "archived" };
+                  }),
+                  onToggleArchived: toggleArchived,
+                });
+              })
+            ),
+        titleHint ? h("p", { className: "kb-footnote" },
+          "标题当前按首条消息生成。启用 ",
+          h("b", null, "Conversation-following titles"),
+          " 后，卡片标题会随主要任务更新。"
+        ) : null,
+        notice ? h("div", { className: "kb-notice", "data-kind": notice.kind || null, role: "status", "aria-live": "polite" }, notice.text) : null
+      );
+    }
+
+    function BoardPage(props) {
+      if (props && typeof props.useSessionStatus === "function") {
+        return h(BoardWithProps, props);
+      }
+      return h(BoardWithServices, props);
+    }
+
+    function BoardWithProps(props) {
+      const statuses = props.useSessionStatus(function (value) { return value; });
+      const sessionsList = typeof props.useSessions === "function" ? props.useSessions(function (value) { return value; }) : undefined;
+      return h(BoardView, { statuses: statuses, sessionsList: sessionsList });
+    }
+
+    function BoardWithServices(props) {
+      const uiSession = service("uiSession");
+      const sessionsService = service("sessions");
+      const statuses = useObservable(uiSession && uiSession.sessionStatus);
+      const sessionsList = useObservable(sessionsService && sessionsService.list);
+      return h(BoardView, { statuses: statuses, sessionsList: sessionsList, t: props && props.t });
+    }
+
+    const NavIcon = function (props) {
+      const size = props.size || 16;
+      return h("svg", { width: size, height: size, viewBox: "0 0 16 16", "aria-hidden": "true", focusable: "false", style: { display: "block" } },
+        h("rect", { x: 1.6, y: 2.4, width: 3.4, height: 9.2, rx: 1.2, fill: "currentColor", opacity: .55 }),
+        h("rect", { x: 6.3, y: 2.4, width: 3.4, height: 11.2, rx: 1.2, fill: "currentColor" }),
+        h("rect", { x: 11.0, y: 2.4, width: 3.4, height: 6.2, rx: 1.2, fill: "currentColor", opacity: .8 })
+      );
+    };
 
     return {
       inject: ["slots", "locale"],
       apply(ctx) {
         clientCtx = ctx;
-        ctx.effect(() => ctx.slots.inject("sidebar.panellist", () => ctx.slots.register({
-          name: "sidebar.panellist", id: "task-board", order: 20, label: () => "看板",
-        }, NavIcon)), "dsh-task-board: nav entry");
-        ctx.effect(() => ctx.slots.inject("main", () => ctx.slots.register({
-          name: "main", key: "task-board",
-        }, BoardPage)), "dsh-task-board: board panel");
+        ctx.effect(function () {
+          return ctx.slots.inject("sidebar.panellist", function () {
+            return ctx.slots.register({
+              name: "sidebar.panellist", id: "task-board", order: 20, label: function () { return "看板"; },
+            }, NavIcon);
+          });
+        }, "dsh-task-board: nav entry");
+        ctx.effect(function () {
+          return ctx.slots.inject("main", function () {
+            return ctx.slots.register({
+              name: "main", key: "task-board",
+            }, BoardPage);
+          });
+        }, "dsh-task-board: board panel");
       },
     };
   },
