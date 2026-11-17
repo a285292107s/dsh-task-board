@@ -194,6 +194,15 @@ body[data-ds-dark-theme] .kb{
   .kb-card[data-flash="true"]:after{animation:none;opacity:0}
   .kb-skel,.kb-iconbtn[data-busy="true"] svg{animation:none}
 }
+.tb-board-entry{box-sizing:border-box;border:.5px solid var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-button-elevated-fill);color:var(--dsw-alias-label-primary);cursor:pointer;height:38px;min-width:0;flex:1 1 auto;justify-content:center;align-items:center;gap:6px;margin:0;padding:8px 12px;font:inherit;font-size:14px;font-weight:500;line-height:22px;display:flex;overflow:hidden}
+@media (hover:hover){.tb-board-entry:hover{background:var(--dsw-alias-button-floating-hover)}}
+.tb-board-entry:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:-2px}
+.tb-board-entry svg{flex:none;display:block}
+.tb-board-entry[data-active="true"]{background:var(--dsw-alias-button-ghost-active-fill);box-shadow:inset 0 0 0 1px var(--dsw-alias-button-ghost-active-border)}
+.tb-board-entry[data-collapsed="true"]{background:0 0;border-color:transparent;flex:none;width:36px;height:36px;gap:0;padding:0}
+@media (hover:hover){.tb-board-entry[data-collapsed="true"]:hover{background-color:var(--dsw-alias-interactive-bg-hover)}}
+.tb-board-entry[data-collapsed="true"][data-active="true"]{background-color:var(--dsw-alias-button-ghost-active-fill);box-shadow:inset 0 0 0 1px var(--dsw-alias-button-ghost-active-border)}
+.tb-board-entry[data-collapsed="true"] .tb-board-entry-label{display:none}
 `;
 
     (function injectCss() {
@@ -1668,8 +1677,55 @@ body[data-ds-dark-theme] .kb{
       );
     };
 
+    const BOARD_LABEL = "看板";
+
+    function openBoardPanel() {
+      const layout = service("layout");
+      if (!layout || typeof layout.selectPanel !== "function") return;
+      try {
+        layout.selectPanel("task-board");
+      } catch (error) {
+        if (typeof console !== "undefined") console.warn("[dsh-task-board] cannot open the board panel", error);
+      }
+    }
+
+    const BoardSidebarButtonView = function (props) {
+      const wide = props.wide;
+      return h("button", {
+        type: "button",
+        className: "tb-board-entry",
+        "data-collapsed": wide ? undefined : "true",
+        "data-active": props.active ? "true" : undefined,
+        "aria-label": BOARD_LABEL,
+        "aria-current": props.active ? "page" : undefined,
+        title: wide ? undefined : BOARD_LABEL,
+        onClick: openBoardPanel,
+      },
+        h(NavIcon, { size: wide ? 15 : 18 }),
+        wide ? h("span", { className: "tb-board-entry-label" }, BOARD_LABEL) : null
+      );
+    };
+
+    const BoardSidebarButtonLive = function (props) {
+      const active = props.usePanelInfo(function (info) { return info.activePanelId === "task-board"; });
+      return h(BoardSidebarButtonView, { wide: props.wide, active: active });
+    };
+
+    const BoardSidebarButtonStatic = function (props) {
+      return h(BoardSidebarButtonView, { wide: props.wide, active: false });
+    };
+
+    const BoardSidebarAction = function (props) {
+      const wide = !props || props.wide !== false;
+      const live = props && typeof props.usePanelInfo === "function";
+      return h(live ? BoardSidebarButtonLive : BoardSidebarButtonStatic, {
+        wide: wide,
+        usePanelInfo: props && props.usePanelInfo,
+      });
+    };
+
     return {
-      inject: ["slots", "locale"],
+      inject: ["slots", "locale", "layout"],
       apply(ctx) {
         clientCtx = ctx;
         ctx.effect(function () {
@@ -1686,6 +1742,13 @@ body[data-ds-dark-theme] .kb{
             }, BoardPage);
           });
         }, "dsh-task-board: board panel");
+        ctx.effect(function () {
+          return ctx.slots.inject("sidebar.session.action", function () {
+            return ctx.slots.register({
+              name: "sidebar.session.action", id: "task-board-entry",
+            }, BoardSidebarAction);
+          });
+        }, "dsh-task-board: sidebar board entry");
       },
     };
   },
