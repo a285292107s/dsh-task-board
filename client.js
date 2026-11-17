@@ -118,17 +118,24 @@ body[data-ds-dark-theme] .kb{
 .kb-badge[data-tone="fork"]{background:color-mix(in srgb,var(--accent) 10%,var(--card));color:var(--accent)}
 .kb-badge[data-tone="migrate"]{background:color-mix(in srgb,var(--hi) 12%,var(--card));color:var(--hi)}
 .kb-badge[data-tone="arch"]{background:color-mix(in srgb,var(--ink3) 10%,var(--card));color:var(--ink3)}
-.kb-status{display:flex;align-items:center;gap:5px;margin-top:5px;color:var(--sc,var(--ink2));font-size:11px;font-weight:600;line-height:1.35;min-width:0}
-.kb-status .kb-statustext{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.kb-status .kb-statustime{color:var(--ink3);font-weight:400;white-space:nowrap;font-variant-numeric:tabular-nums}
-.kb-status .kb-statustime:before{content:'·';margin-right:5px;color:var(--line2)}
-.kb-evidence{margin:5px 0 0;color:var(--ink2);font-size:12.5px;line-height:1.42;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.kb-status{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:6px 0 0 21px;min-width:0}
+.kb-statusmain{display:flex;align-items:baseline;gap:6px;min-width:0;overflow:hidden}
+.kb-statustext{flex:none;color:var(--sc,var(--ink2));font-size:11.5px;font-weight:600;line-height:1.35;white-space:nowrap}
+.kb-place{min-width:0;color:var(--ink2);font-size:10.5px;font-weight:500;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.kb-place:before{content:'·';margin-right:5px;color:var(--line2)}
+.kb-status .kb-statustime{flex:none;margin-left:auto;color:var(--ink2);font-size:10.5px;font-weight:400;line-height:1.35;white-space:nowrap;font-variant-numeric:tabular-nums}
+.kb-body{display:flex;align-items:flex-start;gap:10px;margin:6px 0 0 21px}
+.kb-evidence{margin:0;flex:1;min-width:0;color:var(--ink2);font-size:12.5px;line-height:1.42;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.kb-evidence[data-kind="step"]{color:var(--ink);font-size:13px;line-height:1.45}
 .kb-evidence[data-kind="question"]{color:var(--ink);font-size:13px;line-height:1.45}
 .kb-evidence[data-kind="result"]{color:var(--ink2)}
-.kb-evidence[data-kind="error"]{color:var(--hi)}
+.kb-evidence[data-kind="error"]{color:var(--hi);font-size:13px;line-height:1.45}
 .kb-evidence[data-kind="muted"]{color:var(--ink3)}
 .kb-evidence .kb-qmark{color:var(--sc,var(--ink3));font-family:var(--serif);font-size:17px;line-height:0;vertical-align:-3px;margin-right:2px}
-.kb-foot{display:flex;align-items:center;gap:6px;margin-top:7px;color:var(--ink3);font-size:10.5px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.kb-meter{flex:none;display:flex;align-items:center;gap:5px;margin-top:3px;color:var(--ink2);font-size:10px;line-height:1;font-variant-numeric:tabular-nums}
+.kb-meterbar{display:block;width:40px;height:4px;border-radius:2px;background:var(--line);overflow:hidden}
+.kb-meterfill{display:block;height:100%;border-radius:2px;background:var(--sc,var(--ink3))}
+.kb-foot{display:flex;align-items:center;gap:6px;margin:9px 0 0 21px;color:var(--ink2);font-size:10.5px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
 .kb-foot span{overflow:hidden;text-overflow:ellipsis}
 .kb-foot i{font-style:normal;color:var(--line2)}
 .kb-ws{display:inline-block;max-width:150px;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom}
@@ -345,14 +352,6 @@ body[data-ds-dark-theme] .kb{
       return text.length > limit ? text.slice(0, limit) + "…" : text;
     }
 
-    function formatTokens(value) {
-      const number = Number(value);
-      if (!Number.isFinite(number) || number <= 0) return "";
-      if (number >= 999500) return (number / 1000000).toFixed(1).replace(/\.0$/, "") + "m";
-      if (number >= 1000) return (number / 1000).toFixed(1).replace(/\.0$/, "") + "k";
-      return String(Math.round(number));
-    }
-
     function stateMeta(state) {
       return STATES[state] || STATES.unknown;
     }
@@ -449,9 +448,7 @@ body[data-ds-dark-theme] .kb{
         return { kind: "error", text: snippet(reason, 180) };
       }
       if (state === "running") {
-        let text = activity.currentStep || "正在生成回复…";
-        if (activity.todoTotal) text += " · " + activity.todoDone + "/" + activity.todoTotal + " 步";
-        return { kind: "step", text: snippet(text, 160) };
+        return { kind: "step", text: snippet(activity.currentStep || "正在生成回复…", 160) };
       }
       if (state === "subagent") {
         const labels = activity.labels || [];
@@ -488,7 +485,7 @@ body[data-ds-dark-theme] .kb{
     function badgesOf(card, ctx) {
       const badges = [];
       if (ctx.newResult) badges.push({ text: "新结果", tone: "new" });
-      if (card.titleStale) badges.push({ text: "新指令", tone: "stale" });
+      if (card.titleStale && ctx.lane !== "settled") badges.push({ text: "新指令", tone: "stale" });
       else if (card.titleUpdatedAt
         && card.titleSource === "provider"
         && card.titleUpdatedAt > ctx.openedAt
@@ -521,8 +518,29 @@ body[data-ds-dark-theme] .kb{
       return { label: meta.label, time: card.since ? doneText(card.since, now) : "" };
     }
 
+    function placeOf(card, lane) {
+      if (lane !== "working" || card.state !== "running") return "";
+      const activity = card.activity || {};
+      const turn = Number(activity.turn);
+      const step = Number(activity.step);
+      const hasTurn = Number.isFinite(turn) && turn > 0;
+      const hasStep = Number.isFinite(step) && step > 0;
+      if (!hasTurn && !hasStep) return "";
+      if (hasTurn && hasStep) return "第 " + turn + " 轮 · 第 " + step + " 步";
+      return hasTurn ? "第 " + turn + " 轮" : "第 " + step + " 步";
+    }
+
+    function meterOf(card, lane) {
+      if (lane !== "working" || card.state !== "running") return null;
+      const activity = card.activity || {};
+      const total = Number(activity.todoTotal);
+      if (!Number.isFinite(total) || total <= 0) return null;
+      const done = Math.max(0, Math.min(total, Math.round(Number(activity.todoDone) || 0)));
+      return { done: done, total: total, pct: Math.round(done / total * 100) };
+    }
+
     function footOf(card, lane, now) {
-      if (card.blank) return [{ text: card.createdAt ? relative(card.createdAt, now) : "刚刚" }];
+      if (card.blank) return [];
       const items = [];
       if (card.workspace && card.workspace.title) items.push({ text: card.workspace.title, title: card.workspace.path || card.workspace.title });
       if (card.archived) {
@@ -530,10 +548,9 @@ body[data-ds-dark-theme] .kb{
       } else if (lane === "working") {
         if (card.activity && card.activity.subagents) items.push({ text: "子代理 " + card.activity.subagents });
         else if (card.activity && card.activity.jobs) items.push({ text: "任务 " + card.activity.jobs });
-        else if (card.turns) items.push({ text: card.turns + " 轮" });
+        else if (card.state !== "running" && card.turns) items.push({ text: card.turns + " 轮" });
       } else if (lane === "settled") {
         if (card.turns) items.push({ text: card.turns + " 轮" });
-        if (card.tokens) items.push({ text: formatTokens(card.tokens) + " tok" });
         if (card.outcome && card.outcome.durationMs) items.push({ text: "用时 " + duration(card.outcome.durationMs) });
       } else if (card.turns) {
         items.push({ text: card.turns + " 轮" });
@@ -588,9 +605,9 @@ body[data-ds-dark-theme] .kb{
       const pending = item.pending;
       const lane = item.lane;
       const view = item.view;
-      const badges = badgesOf(card, { newResult: item.newResult, openedAt: props.openedAt });
+      const badges = badgesOf(card, { newResult: item.newResult, openedAt: props.openedAt, lane: lane });
       const tone = stateTone(card.state);
-      const aria = [view.title, view.status.label, view.evidence.text].filter(Boolean).join("，");
+      const aria = [view.title, view.status.label, view.place, view.status.time, view.meter ? "待办 " + view.meter.done + " / " + view.meter.total : "", view.evidence.text].filter(Boolean).join("，");
       const signature = [card.state, card.title, view.status.label, view.evidence.text, badges.map(function (badge) { return badge.text; }).join("|"), item.lane, card.pinned ? "1" : "0"].join("\u0001");
       const signatureRef = useRef(signature);
       const [flash, setFlash] = useState(false);
@@ -635,21 +652,30 @@ body[data-ds-dark-theme] .kb{
           card.pinned ? h("span", { className: "kb-badge", "data-tone": "arch", title: "已置顶" }, h(Icon, { name: "pin", size: 10 })) : null
         ),
         h("div", { className: "kb-status" },
-          h("span", { className: "kb-statustext" }, view.status.label),
+          h("div", { className: "kb-statusmain" },
+            h("span", { className: "kb-statustext" }, view.status.label),
+            view.place ? h("span", { className: "kb-place" }, view.place) : null
+          ),
           view.status.time ? h("span", { className: "kb-statustime" }, view.status.time) : null
         ),
-        h("p", { className: "kb-evidence", "data-kind": view.evidence.kind },
-          view.evidence.kind === "question" ? h("span", { className: "kb-qmark", "aria-hidden": "true" }, "“") : null,
-          view.evidence.text
+        h("div", { className: "kb-body" },
+          h("p", { className: "kb-evidence", "data-kind": view.evidence.kind },
+            view.evidence.kind === "question" ? h("span", { className: "kb-qmark", "aria-hidden": "true" }, "“") : null,
+            view.evidence.text
+          ),
+          view.meter ? h("div", { className: "kb-meter", title: "待办进度 " + view.meter.done + " / " + view.meter.total + " 项" },
+            h("span", { className: "kb-meterbar" }, h("span", { className: "kb-meterfill", style: { width: view.meter.pct + "%" } })),
+            h("span", { className: "kb-metercount" }, view.meter.done + "/" + view.meter.total + " 项")
+          ) : null
         ),
-        h("div", { className: "kb-foot" },
+        view.foot.length ? h("div", { className: "kb-foot" },
           view.foot.map(function (part, index) {
             return h("span", { key: index, title: part.title || null },
               index ? h("i", null, " · ") : null,
               part.text
             );
           })
-        )
+        ) : null
       );
     }
 
@@ -1264,6 +1290,8 @@ body[data-ds-dark-theme] .kb{
           title: plain(card.title) || "未命名会话",
           status: statusText(effective, pending, lane, now),
           evidence: evidenceOf(effective, pending, now),
+          place: placeOf(effective, lane),
+          meter: meterOf(effective, lane),
           meta: stateMeta(state),
         };
         const newResult = lane === "settled"

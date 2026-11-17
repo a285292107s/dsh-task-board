@@ -392,6 +392,24 @@ function subscribeSessionEvents(ctx, read, requestPush) {
       requestPush();
     }),
   ];
+
+  try {
+    disposers.push(listen('session/event', (session, event) => {
+      try {
+        const type = event && event.type;
+        if (type !== 'turn/start' && type !== 'step/start' && type !== 'turn/end') return;
+        const id = session && session.id ? String(session.id) : '';
+        if (!id) return;
+        const row = read.rows.get(id);
+        if (!row || row.origin === 'subagent') return;
+        read.dirty.add(id);
+        read.version += 1;
+        requestPush();
+      } catch (e) { }
+    }));
+  } catch (e) {
+    logWarn(ctx, '会话事件订阅失败：' + String((e && e.message) || e));
+  }
   try {
     const projections = getService(ctx, 'sessionProjections');
     if (projections && typeof projections.onChanged === 'function') {
@@ -521,16 +539,25 @@ function lastTurnInfo(events) {
   let lastEnd = null;
   let settledStart = null;
   let lastTool = null;
+  let openTurn = null;
+  let openStep = null;
   for (const event of list) {
     if (!event || typeof event !== 'object') continue;
+    if (openTurn !== null && event.type !== 'turn/start' && event.type !== 'turn/end') {
+      openStep = asInt(event.data && event.data.step, openStep);
+    }
     if (event.type === 'turn/start') {
       openStart = event;
       openStartSeq = Number.isFinite(Number(event.seq)) ? Number(event.seq) : null;
+      openTurn = asInt(event.data && event.data.turn, null);
+      openStep = null;
     } else if (event.type === 'turn/end') {
       lastEnd = event;
       settledStart = openStart;
       openStart = null;
       openStartSeq = null;
+      openTurn = null;
+      openStep = null;
     } else if (event.type === 'tool/call') {
       lastTool = event;
     }
@@ -541,6 +568,8 @@ function lastTurnInfo(events) {
   return {
     openStart: openStart && Number.isFinite(Number(openStart.time)) ? Number(openStart.time) : null,
     openStartSeq,
+    turn: openTurn,
+    step: openStep,
     settledStart: startedAt,
     endedAt,
     reason,
@@ -739,6 +768,8 @@ function compactCard(summary, title, workspace, pinned, fork, archived) {
       todoDone: 0,
       todoTotal: 0,
       runningSince: state === 'running' ? summary.updatedAt : null,
+      turn: null,
+      step: null,
     },
     outcome: null,
     goal: null,
@@ -925,6 +956,8 @@ async function buildCard(ctx, summary, context) {
       todoDone: todos.done,
       todoTotal: todos.total,
       runningSince: state === 'running' ? sinceFor(state, summary, lastTurn, observation) : null,
+      turn: lastTurn.turn,
+      step: lastTurn.step,
     },
     outcome,
     goal,

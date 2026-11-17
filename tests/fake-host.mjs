@@ -57,12 +57,15 @@ const events = {
     { type: 'turn/start', seq: 1, time: now - 12 * MIN, data: { turn: 1 } },
     { type: 'user/message', seq: 2, time: now - 12 * MIN, data: {} },
     { type: 'session/title', seq: 3, time: now - 30 * 1000, data: { title: titles.s1, messageSeqs: [2], source: { kind: 'provider', provider: 'session-title-all-prompts-llm' } } },
-    { type: 'tool/call', seq: 4, time: now - 8 * MIN, data: { name: 'bash', arguments: JSON.stringify({ command: 'pnpm test' }) } },
+    { type: 'tool/call', seq: 4, time: now - 8 * MIN, data: { name: 'bash', arguments: JSON.stringify({ command: 'pnpm test' }), step: 1 } },
+    { type: 'step/start', seq: 5, time: now - 6 * MIN, data: { turn: 1, step: 2 } },
+    { type: 'step/start', seq: 6, time: now - 5 * MIN, data: { turn: 1, step: 3 } },
   ],
   s2: [
     { type: 'turn/start', seq: 1, time: now - 3 * MIN, data: { turn: 1 } },
-    { type: 'turn/end', seq: 2, time: now - 2 * MIN, data: { turn: 1, reason: { kind: 'error', error: { message: 'TypeScript: Cannot find module @/lib/env' } } } },
-    { type: 'session/title', seq: 3, time: now - 10 * MIN, data: { title: titles.s2, messageSeqs: [1], source: { kind: 'provider', provider: 'session-title-all-prompts-llm' } } },
+    { type: 'step/start', seq: 2, time: now - 3 * MIN, data: { turn: 1, step: 1 } },
+    { type: 'turn/end', seq: 3, time: now - 2 * MIN, data: { turn: 1, reason: { kind: 'error', error: { message: 'TypeScript: Cannot find module @/lib/env' } } } },
+    { type: 'session/title', seq: 4, time: now - 10 * MIN, data: { title: titles.s2, messageSeqs: [1], source: { kind: 'provider', provider: 'session-title-all-prompts-llm' } } },
   ],
   s3: [
     { type: 'turn/start', seq: 1, time: now - 10 * MIN, data: { turn: 1 } },
@@ -283,10 +286,14 @@ assert.equal(ctx.registration.path, '/task-board-api');
   assert.match(byId.get('s1').activity.currentStep, /0042_users/);
   assert.equal(byId.get('s1').activity.subagents, 1);
   assert.deepEqual(byId.get('s1').activity.labels, ['子代理 s7'], 'activity labels are deduped');
+  assert.equal(byId.get('s1').activity.turn, 1);
+  assert.equal(byId.get('s1').activity.step, 3, 'step/start 折叠出当前步骤，tool/call 的 data.step 作兜底');
 
   assert.equal(byId.get('s2').state, 'failed');
   assert.equal(byId.get('s2').activity.jobs, 1, '失败不会因为后台任务而退回「进行中」');
   assert.match(byId.get('s2').outcome.error, /Cannot find module/);
+  assert.equal(byId.get('s2').activity.turn, null);
+  assert.equal(byId.get('s2').activity.step, null, 'turn/end 后清空当前回合与步骤');
   assert.equal(byId.get('s2').titleStale, true, 'title snapshot is older than the latest prompt');
 
   assert.equal(byId.get('s3').state, 'completed');
@@ -297,6 +304,8 @@ assert.equal(ctx.registration.path, '/task-board-api');
   assert.equal(byId.has('s5'), false);
   assert.equal(byId.get('s8').compact, true);
   assert.equal(byId.get('s8').state, 'unknown');
+  assert.equal(byId.get('s8').activity.turn, null);
+  assert.equal(byId.get('s8').activity.step, null, '简卡不猜当前回合 / 步骤');
 
   assert.equal(byId.get('s9').state, 'scheduled');
   assert.equal(byId.get('s9').activity.scheduled, 2);
@@ -322,6 +331,8 @@ assert.equal(ctx.registration.path, '/task-board-api');
   assert.equal(json.cards[0].id, 's6');
   assert.equal(json.cards[0].state, 'archived');
   assert.equal(json.cards[0].canOpen, false);
+  assert.equal(json.cards[0].activity.turn, null);
+  assert.equal(json.cards[0].activity.step, null, '归档卡不猜当前回合 / 步骤');
   assert.equal(ctx.state.listCalls, 1, '归档快照复用主快照的会话摘要，不重复全量扫描');
 }
 
@@ -506,6 +517,18 @@ assert.equal(ctx.registration.path, '/task-board-api');
   }
   assert.ok(detached, 'detach 的会话保留卡片而不是删除');
   assert.equal(live.state.listCalls, baselineCalls, 'detach 不重读会话列表');
+
+  const stepEvent = { type: 'step/start', seq: 7, time: now, data: { turn: 1, step: 4 } };
+  events.s1 = events.s1.concat([stepEvent]);
+  live.emit('session/event', { id: 's1' }, stepEvent);
+  let stepped = null;
+  for (let attempt = 0; attempt < 300; attempt += 1) {
+    const next = await getJson(live, '/task-board-api/cards?days=7');
+    if (next.json.cards.find((card) => card.id === 's1')?.activity.step === 4) { stepped = next; break; }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.ok(stepped, 'session/event 的 step/start 标脏后快照重建，出现新 step');
+  assert.equal(stepped.json.cards.find((card) => card.id === 's1').activity.turn, 1);
 }
 
 console.log('fake-host: passed');
